@@ -1,5 +1,6 @@
 import flet as ft
 from database import init_db, get_filtered_cadets, update_cadet, register_cadet, delete_cadet
+import attendance_pdf
 
 def main(page: ft.Page):
     init_db()
@@ -14,6 +15,40 @@ def main(page: ft.Page):
     active_squads = set()
     active_ms = set()
     sort_ascending = True
+
+    attendance_registry = []
+
+    def handle_save(e):
+        if not attendance_registry: return
+        try:
+            day_order = {"TUE PT": 0, "WED PT": 1, "THU PT": 2, "LAB": 3}
+            target_days = list(set(item["col"] for item in attendance_registry))
+            target_days.sort(key=lambda d: day_order.get(d, 99)) 
+            
+            pdf_gen = attendance_pdf.AttendancePDF()
+            
+            for day in target_days:
+                day_data = []
+                for item in attendance_registry:
+                    if item["col"] == day:
+                        day_data.append({
+                            "name": item["name"],
+                            "ms": item["ms"],
+                            "status": item["status"].value if item["status"].value else "N/A",
+                            "is_late": item["late"].value
+                        })
+                
+                # Page 1: The Table
+                pdf_gen.generate_report_page(day, day_data)
+                # Page 2: The Bar Graph
+                pdf_gen.generate_graph(day_data, day)
+
+            pdf_gen.output("attendance_report.pdf")
+            page.snack_bar = ft.SnackBar(ft.Text("PDF with Graphs Generated!"), bgcolor="green")
+            page.snack_bar.open = True
+        except Exception as ex:
+            print(f"Error: {ex}")
+        page.update()
 
     # Logic Functions
     def update_roster(e=None):
@@ -177,7 +212,6 @@ def main(page: ft.Page):
             val_to_add = f"{val} Squad" if val != "MS4" else val
         else:
             val_to_add = val
-
         target_set = {"school": active_schools, "squad": active_squads, "ms": active_ms}[category]
         if e.control.value:
             target_set.add(val_to_add)
@@ -198,6 +232,85 @@ def main(page: ft.Page):
         btn_roster.bgcolor = "#012169" if is_roster else ft.Colors.GREY_900
         btn_task_org.bgcolor = "#8B2331" if not is_roster else ft.Colors.GREY_900
         page.update()
+
+    def build_task_org():
+        attendance_registry.clear()
+        cadets = get_filtered_cadets("", [], [], [], "ASC")
+        
+        squad_groups = {}
+        for c in cadets:
+            squad_name = c[4] 
+            if squad_name not in squad_groups:
+                squad_groups[squad_name] = []
+            squad_groups[squad_name].append(c)
+
+        days = ["TUE PT", "WED PT", "THU PT", "LAB"]
+
+        def create_attendance_cell(cadet_name, cadet_ms, column_label):
+            status_dropdown = ft.Dropdown(
+                options=[
+                    ft.dropdown.Option("P", "Present"),
+                    ft.dropdown.Option("A", "Absent"),
+                    ft.dropdown.Option("E", "Excused"),
+                    ft.dropdown.Option("UN", "Uncontracted"),
+                ],
+                width=120, height=40, dense=True, text_size=11, border_color="white24"
+            )
+            late_checkbox = ft.Checkbox(label="L", scale=0.7)
+
+            attendance_registry.append({
+                "name": cadet_name,
+                "ms": cadet_ms,
+                "col": column_label,
+                "status": status_dropdown,
+                "late": late_checkbox
+            })
+            return ft.Row([status_dropdown, late_checkbox], spacing=0, alignment=ft.MainAxisAlignment.CENTER)
+
+        squad_containers = []
+        for squad in sorted(squad_groups.keys()):
+            rows = []
+            for cadet in squad_groups[squad]:
+                c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet
+                is_lead = c_tier in [1, 2]
+
+                cells = [ft.DataCell(ft.Text(c_name, weight="bold" if is_lead else "normal", color="blue400" if is_lead else "white"))]
+                for day in days:
+                    cells.append(ft.DataCell(create_attendance_cell(c_name, c_ms, day)))
+
+                rows.append(ft.DataRow(cells=cells))
+
+            squad_containers.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(squad.upper(), weight="bold", size=16, color="blue200"),
+                        ft.DataTable(
+                            column_spacing=15,
+                            columns=[ft.DataColumn(ft.Text("NAME"))] + [ft.DataColumn(ft.Text(d)) for d in days],
+                            rows=rows,
+                            border=ft.Border.all(1, "white10"),
+                            border_radius=8,
+                        )
+                    ]),
+                    padding=15, bgcolor=ft.Colors.WHITE10, border_radius=10,
+                )
+            )
+
+        return ft.Column([
+            ft.Container(
+                padding=10,
+                content=ft.Row([
+                    ft.Text("TASK ORGANIZATION & MULTI-DAY ATTENDANCE", size=20, weight="bold"),
+                    ft.Button(
+                        "GENERATE FULL REPORT", 
+                        icon=ft.Icons.PICTURE_AS_PDF,
+                        bgcolor="#8B2331", color="white",
+                        on_click=handle_save # Logic updated below
+                    )
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ),
+            ft.Row(controls=squad_containers, scroll=ft.ScrollMode.ALWAYS, vertical_alignment="start", spacing=20)
+        ], expand=True, scroll=ft.ScrollMode.AUTO)
 
     # UI Builders
     def build_filters():
@@ -248,7 +361,7 @@ def main(page: ft.Page):
     page.drawer = ft.NavigationDrawer(
         controls=[
             ft.Container(
-                content=ft.Text("Hello World", size=24, weight="bold", color="white"),
+                content=ft.Text("WELCOME TO THE BULL PEN", size=24, weight="bold", color="white"),
                 padding=40
             )
         ],
@@ -260,7 +373,7 @@ def main(page: ft.Page):
         width=250,
         bgcolor=ft.Colors.BLACK,
         padding=20,
-        border=ft.border.only(left=ft.border.BorderSide(1, "white10")),
+        border=ft.Border.only(left=ft.border.BorderSide(1, "white10")),
         visible=page.width > 800
     )
 
@@ -271,14 +384,14 @@ def main(page: ft.Page):
                 content=build_filters(),
                 padding=15,
                 bgcolor=ft.Colors.GREY_900,
-                border=ft.border.all(1, "white10"),
+                border=ft.Border.all(1, "white10"),
                 border_radius=12,
                 width=240,
                 height=400,
                 shadow=ft.BoxShadow(blur_radius=20, color="black")
             ),
             alignment=ft.Alignment(1, -1),
-            padding=ft.padding.only(top=140, right=15), 
+            padding=ft.Padding.only(top=140, right=15), 
         ),
         visible=False
     )
@@ -299,9 +412,22 @@ def main(page: ft.Page):
     ], expand=True)
 
     task_org_view = ft.Container(
-        content=ft.Text("Task Organization View (Placeholder)", color="white"),
-        bgcolor="black", padding=20, expand=True, visible=False,
+        content=build_task_org(),
+        expand=True,
+        visible=False,
+        padding=10
     )
+
+    def show_view(is_roster):
+        filter_anchor.visible = False
+        roster_view.visible, task_org_view.visible = is_roster, not is_roster
+
+        if not is_roster and not task_org_view.content:
+            task_org_view.content = build_task_org()
+            
+        btn_roster.bgcolor = "#012169" if is_roster else ft.Colors.GREY_900
+        btn_task_org.bgcolor = "#8B2331" if not is_roster else ft.Colors.GREY_900
+        page.update()
     
     page.appbar = ft.AppBar(
         title=ft.Text("THE BULL PEN", weight="bold"), 

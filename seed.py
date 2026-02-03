@@ -19,7 +19,9 @@ def seed_data():
             # Requirements: 1 per squad is Tier 2, 3 Duke (D), 3 NCCU (N)
             tier = 2 if i == 0 else 3
             school = "D" if i < 3 else "N"
-            ms_level = (i % 3) + 1 # Cycles MS1, MS2, MS3
+            ms_level = (i // 2) + 1
+
+            role = "SL" if tier == 2 else "Cadet"
             
             name = f"Cadet {squad[:1]}{i+1}, {school}-{ms_level}"
             test_cadets.append((name, ms_level, school, squad, tier, "password123"))

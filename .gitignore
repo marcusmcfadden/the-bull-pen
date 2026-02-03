@@ -1,0 +1,13 @@
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Environments
+venv/
+env/
+
+# Sensitive Data (Don't leak Cadet info!)
+*.db
+*.sqlite
+*.sqlite3

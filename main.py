@@ -1,9 +1,22 @@
 import flet as ft
+import base64
 from database import init_db, get_filtered_cadets, update_cadet, register_cadet, delete_cadet
 import attendance_pdf
 
 def main(page: ft.Page):
     init_db()
+
+    # Real-time PubSub
+
+    def on_broadcoast(msg):
+        if msg == "roster_updated":
+            update_roster()
+
+            if task_org_view.visible:
+                task_org_view.content = build_task_org()
+            page.update()
+
+    page.pubsub.subscribe(on_broadcoast)
     
     # Page Configuration
     page.title = "THE BULL PEN"
@@ -18,7 +31,7 @@ def main(page: ft.Page):
 
     attendance_registry = []
 
-    def handle_save(e):
+    async def handle_save(e):
         if not attendance_registry: return
         try:
             day_order = {"TUE PT": 0, "WED PT": 1, "THU PT": 2, "LAB": 3}
@@ -33,22 +46,29 @@ def main(page: ft.Page):
                     if item["col"] == day:
                         day_data.append({
                             "name": item["name"],
-                            "ms": item["ms"],
+                            "ms": item["ms"], 
                             "status": item["status"].value if item["status"].value else "N/A",
                             "is_late": item["late"].value
                         })
                 
-                # Page 1: The Table
-                pdf_gen.generate_report_page(day, day_data)
-                # Page 2: The Bar Graph
-                pdf_gen.generate_graph(day_data, day)
+                # The Report
+                pdf_gen.generate_combined_report(day, day_data)
 
-            pdf_gen.output("attendance_report.pdf")
-            page.snack_bar = ft.SnackBar(ft.Text("PDF with Graphs Generated!"), bgcolor="green")
+            pdf_bytes = pdf_gen.output(dest='S')
+        
+            if isinstance(pdf_bytes, str):
+                pdf_bytes = pdf_bytes.encode('latin-1')
+
+            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+            data_uri = f"data:application/pdf;base64,{pdf_base64}"
+            await page.launch_url(data_uri)
+
+            page.snack_bar = ft.SnackBar(ft.Text("Opening PDF Report..."), bgcolor="green")
             page.snack_bar.open = True
         except Exception as ex:
             print(f"Error: {ex}")
-        page.update()
+        page.update_async() if hasattr(page, 'update_async') else page.update()
 
     # Logic Functions
     def update_roster(e=None):
@@ -137,10 +157,12 @@ def main(page: ft.Page):
                                school_dropdown.value, squad_dropdown.value, 3, "password123")
             
             dialog.open = False
-            update_roster()
+            
+            page.pubsub.send_all("roster_updated")
+
             page.update()
 
-        # 3. Build the UI Structure
+        # Build the UI Structure
         dialog = ft.AlertDialog(
                     modal=True,
                     title=ft.Text("Cadet Profile"),
@@ -169,19 +191,16 @@ def main(page: ft.Page):
                     ],
                 )
 
-        # 4. Show the Dialog
+        # Show the Dialog
         page.overlay.append(dialog)
         dialog.open = True
         page.update()
 
     def confirm_delete(cadet_id, cadet_name):
             def finalize_delete(e):
-                # 1. Execute the database logic
                 delete_cadet(cadet_id)
-                # 2. Close the specific dialog
                 confirm_dialog.open = False 
-                # 3. Refresh the UI
-                update_roster()
+                page.pubsub.send_all("roster_updated")
                 page.update()
 
             # Define the dialog
@@ -247,6 +266,10 @@ def main(page: ft.Page):
         days = ["TUE PT", "WED PT", "THU PT", "LAB"]
 
         def create_attendance_cell(cadet_name, cadet_ms, column_label):
+
+            def sync_status(e):
+                page.pubsub.send_all("roster_updated")
+
             status_dropdown = ft.Dropdown(
                 options=[
                     ft.dropdown.Option("P", "Present"),
@@ -254,9 +277,10 @@ def main(page: ft.Page):
                     ft.dropdown.Option("E", "Excused"),
                     ft.dropdown.Option("UN", "Uncontracted"),
                 ],
-                width=120, height=40, dense=True, text_size=11, border_color="white24"
+                width=120, height=40, dense=True, text_size=11, border_color="white24",
+                on_change=sync_status
             )
-            late_checkbox = ft.Checkbox(label="L", scale=0.7)
+            late_checkbox = ft.Checkbox(label="L", scale=0.7, on_change=sync_status)
 
             attendance_registry.append({
                 "name": cadet_name,
@@ -300,7 +324,7 @@ def main(page: ft.Page):
             ft.Container(
                 padding=10,
                 content=ft.Row([
-                    ft.Text("TASK ORGANIZATION & MULTI-DAY ATTENDANCE", size=20, weight="bold"),
+                    ft.Text("MULTI-DAY ATTENDANCE", size=20, weight="bold"),
                     ft.Button(
                         "GENERATE FULL REPORT", 
                         icon=ft.Icons.PICTURE_AS_PDF,
@@ -357,7 +381,6 @@ def main(page: ft.Page):
 
     roster_list = ft.ListView(expand=True, spacing=5)
 
-    # UPDATED NAV DRAWER
     page.drawer = ft.NavigationDrawer(
         controls=[
             ft.Container(
@@ -403,7 +426,7 @@ def main(page: ft.Page):
             roster_list 
         ], spacing=15),
         expand=True,
-        padding=15
+        padding=15  
     )
 
     roster_view = ft.Stack([
@@ -443,7 +466,7 @@ def main(page: ft.Page):
         expand=True, height=60, style=rect_style
     )
     btn_task_org = ft.Button(
-        "TASK ORG", bgcolor="grey900", color="white", 
+        "ATTENDANCE", bgcolor="grey900", color="white", 
         on_click=lambda _: show_view(False), 
         expand=True, height=60, style=rect_style
     )
@@ -476,4 +499,7 @@ def main(page: ft.Page):
     update_roster()
 
 if __name__ == "__main__":
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=8550)
+    ft.app(target=main,
+           assets_dir="assets",
+           view=ft.AppView.WEB_BROWSER, 
+           port=8550)

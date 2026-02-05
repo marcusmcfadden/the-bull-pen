@@ -106,5 +106,16 @@ def get_filtered_cadets(search_query, schools, squads, ms_levels, direction="ASC
     conn.close()
     return rows
 
+def update_attendance(cadet_id, day_col, status, is_late):
+    conn = sqlite3.connect("cadets.db") # Use your actual db name
+    cursor = conn.cursor()
+    cursor.execute("""
+         INSERT INTO attendance (cadet_id, day, status, is_late) 
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(cadet_id, day) DO UPDATE SET status=excluded.status, is_late=excluded.is_late
+     """, (cadet_id, day_col, status, is_late))
+    conn.commit()
+    conn.close()
+
 if __name__ == "__main__":
     init_db()

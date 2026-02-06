@@ -1,10 +1,19 @@
 import sqlite3
 import bcrypt
+import os
 
-db_name = "bullpen.db"
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+db_name = os.path.join(BASE_DIR, "bullpen.db")
+
+def _conn(write=False):
+    conn = sqlite3.connect(db_name, timeout=30, check_same_thread=False)
+    if write:
+        # enable WAL to allow concurrent reads while writing
+        conn.execute("PRAGMA journal_mode=WAL;")
+    return conn
+
 
 def init_db():
-    # Initializes the SQLite database and creates the cadets table.
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
      
@@ -21,6 +30,17 @@ def init_db():
             status TEXT DEFAULT 'N'
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS attendance (
+            cadet_id INTEGER,
+            day TEXT,
+            status TEXT,
+            is_late INTEGER,
+            PRIMARY KEY (cadet_id, day)
+        )
+    ''')
+    
     conn.commit()
     conn.close()
     print("Database initialized successfully.")
@@ -107,7 +127,7 @@ def get_filtered_cadets(search_query, schools, squads, ms_levels, direction="ASC
     return rows
 
 def update_attendance(cadet_id, day_col, status, is_late):
-    conn = sqlite3.connect("cadets.db") # Use your actual db name
+    conn = _conn(write=True)
     cursor = conn.cursor()
     cursor.execute("""
          INSERT INTO attendance (cadet_id, day, status, is_late) 
@@ -116,6 +136,20 @@ def update_attendance(cadet_id, day_col, status, is_late):
      """, (cadet_id, day_col, status, is_late))
     conn.commit()
     conn.close()
+
+def get_attendance_for_day(day_label):
+    conn = sqlite3.connect("bullpen.db")
+    cursor = conn.cursor()
+    # This joins cadets with their status for a specific day
+    query = """
+        SELECT c.id, c.name, c.ms_level, c.tier, a.status, a.is_late
+        FROM cadets c
+        LEFT JOIN attendance a ON c.id = a.cadet_id AND a.day = ?
+    """
+    cursor.execute(query, (day_label,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 if __name__ == "__main__":
     init_db()

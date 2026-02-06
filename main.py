@@ -1,6 +1,6 @@
 import flet as ft
-import base64
-from database import init_db, get_filtered_cadets, update_cadet, register_cadet, delete_cadet
+import sqlite3, base64
+from database import init_db, get_filtered_cadets, update_attendance, update_cadet, register_cadet, delete_cadet
 import attendance_pdf
 
 def main(page: ft.Page):
@@ -8,7 +8,7 @@ def main(page: ft.Page):
 
     # Real-time PubSub
 
-    def on_broadcoast(msg):
+    def on_broadcast(msg):
         if msg == "roster_updated":
             update_roster()
 
@@ -16,7 +16,7 @@ def main(page: ft.Page):
                 task_org_view.content = build_task_org()
             page.update()
 
-    page.pubsub.subscribe(on_broadcoast)
+    page.pubsub.subscribe(on_broadcast)
     
     # Page Configuration
     page.title = "THE BULL PEN"
@@ -30,6 +30,36 @@ def main(page: ft.Page):
     sort_ascending = True
 
     attendance_registry = []
+
+    pending_updates = {}
+    flush_timer = None
+    import threading
+
+    def flush_pending():
+        global flush_timer
+        if not pending_updates:
+            return
+        from database import update_attendance
+
+        for (cadet_id, day), (status, is_late) in list(pending_updates.items()):
+            try:
+                update_attendance(cadet_id=cadet_id, day_col=day, status=status, is_late=is_late)
+            except Exception as ex:
+                print(f"Error updating attendance:", ex)
+
+        pending_updates.clear()
+
+        page.pubsub.send_all("roster_updated")
+
+        page.update()
+
+    def schedule_flush(delay=0.7):
+        global flush_timer
+        if flush_timer:
+            flush_timer.cancel()
+        flush_timer = threading.Timer(delay, flush_pending)
+        flush_timer.daemon = True
+        flush_timer.start()
 
     async def handle_save(e):
         if not attendance_registry: return
@@ -256,6 +286,12 @@ def main(page: ft.Page):
         attendance_registry.clear()
         cadets = get_filtered_cadets("", [], [], [], "ASC")
         
+        conn = sqlite3.connect("bullpen.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT cadet_id, day, status, is_late FROM attendance")
+        attendance_data = {(row[0], row[1]): (row[2], row[3]) for row in cursor.fetchall()}
+        conn.close()
+
         squad_groups = {}
         for c in cadets:
             squad_name = c[4] 
@@ -265,12 +301,16 @@ def main(page: ft.Page):
 
         days = ["TUE PT", "WED PT", "THU PT", "LAB"]
 
-        def create_attendance_cell(cadet_name, cadet_ms, column_label):
+        def create_attendance_cell(cadet_id, cadet_name, cadet_ms, column_label, current_status, current_late):
 
             def sync_status(e):
-                page.pubsub.send_all("roster_updated")
+
+                key = (cadet_id, column_label)
+                pending_updates[key] = (status_dropdown.value, 1 if late_checkbox.value else 0)
+                schedule_flush(0.7)
 
             status_dropdown = ft.Dropdown(
+                value=current_status,
                 options=[
                     ft.dropdown.Option("P", "Present"),
                     ft.dropdown.Option("A", "Absent"),
@@ -278,9 +318,16 @@ def main(page: ft.Page):
                     ft.dropdown.Option("UN", "Uncontracted"),
                 ],
                 width=120, height=40, dense=True, text_size=11, border_color="white24",
-                on_change=sync_status
             )
-            late_checkbox = ft.Checkbox(label="L", scale=0.7, on_change=sync_status)
+
+            status_dropdown.on_change = sync_status
+
+            late_checkbox = ft.Checkbox(
+                value=True if current_late == 1 else False,
+                label="L", 
+            )
+
+            late_checkbox.on_change = sync_status
 
             attendance_registry.append({
                 "name": cadet_name,
@@ -300,7 +347,8 @@ def main(page: ft.Page):
 
                 cells = [ft.DataCell(ft.Text(c_name, weight="bold" if is_lead else "normal", color="blue400" if is_lead else "white"))]
                 for day in days:
-                    cells.append(ft.DataCell(create_attendance_cell(c_name, c_ms, day)))
+                    state = attendance_data.get((c_id, day), (None, 0))
+                    cells.append(ft.DataCell(create_attendance_cell(c_id, c_name, c_ms, day, state[0], state[1])))
 
                 rows.append(ft.DataRow(cells=cells))
 

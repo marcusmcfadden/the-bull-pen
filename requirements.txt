@@ -1,0 +1,7 @@
+flet>=0.10.0
+bcrypt
+redis
+fpdf
+psycopg2-binary
+python-dotenv
+matplotlib

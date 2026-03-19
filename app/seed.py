@@ -40,7 +40,8 @@ def seed_data():
     # 3. Execution
     print(f"Seeding {len(test_cadets)} cadets...")
     for c in test_cadets:
-        register_cadet(*c)
+        cadet_id = register_cadet(...)
+        create_auth_user(cadet_id, username, password)
     print("Seeding complete. Total: 30 Cadets.")
 
 if __name__ == "__main__":

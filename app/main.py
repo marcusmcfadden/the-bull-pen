@@ -1,5 +1,5 @@
 import flet as ft
-import base64
+import os
 import asyncio
 import time, datetime
 from database import (
@@ -8,6 +8,8 @@ from database import (
     get_filtered_cadets,
     update_cadet,
     register_cadet,
+    create_auth_user,
+    login_user,
     delete_cadet,
     create_attendance_export,
     clear_attendance_for_new_week,
@@ -16,6 +18,8 @@ from database import (
 import attendance_save
 
 async def main(page: ft.Page):
+
+    current_user = {"id": None}
 
     def past_n_weeks_range(weeks: int) -> tuple:
         """
@@ -46,16 +50,46 @@ async def main(page: ft.Page):
     attendance_registry = []
     pending_updates = {}
 
+    def build_login_view():
+        username = ft.TextField(label="Username", width=250)
+        password = ft.TextField(label="Password", password=True, can_reveal_password=True, width=250)
+        status_text = ft.Text(color="red")
+
+        def handle_login(e):
+            user_id = login_user(username.value, password.value)
+
+            if user_id:
+                current_user["id"] = user_id
+                page.controls.clear()
+                page.add(build_app_view())
+                page.update()
+            else:
+                status_text.value = "Invalid username or password"
+                page.update()
+
+        return ft.Column(
+            [
+                ft.Text("Login to Bull Pen", size=24, weight="bold"),
+                username,
+                password,
+                ft.ElevatedButton("Login", on_click=handle_login),
+                status_text
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            expand=True
+        )
+
     # Real-time PubSub
 
     def on_broadcast(msg):
         if msg in ["roster_updated", "attendance_flushed"]:
-            asyncio.create_task(update_roster_ui())
+            page.run_task(update_roster_ui)
             if task_org_view.visible:
                 async def refresh_task_org():
                     task_org_view.content = await build_task_org()
                     page.update()
-                asyncio.create_task(refresh_task_org())
+                page.run_task(refresh_task_org)
             else:
                 page.update()
 
@@ -141,7 +175,10 @@ async def main(page: ft.Page):
                     updates = list(pending_updates.items())
                     pending_updates.clear()
                     await batch_update_attendance_async(updates)
-                    page.pubsub.send_all("attendance_flushed")
+                    try:
+                        page.pubsub.send_all("attendance_flushed")
+                    except:
+                        pass
             except asyncio.CancelledError:
                 return
             finally:
@@ -193,12 +230,15 @@ async def main(page: ft.Page):
         csv_bytes = out.getvalue().encode("utf-8")
 
         ts = int(time.time())
+        os.makedirs("assets/reports", exist_ok=True)
         filename = f"attendance_export_{export_id}_{ts}.csv"
         try:
             with open(filename, "wb") as fh:
                 fh.write(csv_bytes)
         except Exception as exc:
             print("Failed to write CSV file:", exc)
+
+        page.launch_url(filename.replace("assets/", ""))
 
         try:
             clear_attendance_for_new_week(clear_events_in_range=(start_ts, end_ts), reset_current=True, backup=True)
@@ -211,8 +251,10 @@ async def main(page: ft.Page):
             pass
 
         try:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Exported {label} -> {filename}"), open=True)
-            page.update()
+            page.snack_bar = ft.SnackBar(
+                ft.Text(f"Exported {label} and opened CSV"),
+                open=True
+            )
         except Exception:
             pass
 
@@ -239,13 +281,16 @@ async def main(page: ft.Page):
                 pdf_gen.generate_combined_report(day, day_data)
 
             pdf_bytes = bytes(pdf_gen.output())
-
-            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
-            data_uri = f"data:application/pdf;base64,{pdf_base64}"
         
-            launcher = ft.UrlLauncher()
-            page.overlay.append(launcher)
-            await launcher.launch_url(data_uri)
+            os.makedirs("assets/reports", exist_ok=True)
+
+            filename = f"assets/reports/attendance_report_{int(time.time())}.pdf"
+
+            with open(filename, "wb") as f:
+                f.write(pdf_bytes)
+
+            page.launch_url(filename.replace("assets/", ""))
+          
 
             page.snack_bar = ft.SnackBar(ft.Text("Opening PDF Report..."), bgcolor="green")
             page.snack_bar.open = True
@@ -336,8 +381,20 @@ async def main(page: ft.Page):
                 update_cadet(cadet_data[0], combined_name, int(ms_level.value), 
                              school_dropdown.value, squad_dropdown.value, cadet_data[5])
             else:
-                register_cadet(combined_name, int(ms_level.value), 
-                               school_dropdown.value, squad_dropdown.value, 3, "password123")
+                combined_name = f"{first_name.value} {last_name.value}".strip()
+
+                cadet_id = register_cadet(
+                    combined_name,
+                    int(ms_level.value),
+                    school_dropdown.value,
+                    squad_dropdown.value,
+                    3
+                )
+
+                username = combined_name.lower().replace(" ", "")
+                password = "password123"
+
+                create_auth_user(cadet_id, username, password)
             
             dialog.open = False
             
@@ -540,7 +597,7 @@ async def main(page: ft.Page):
                                 ft.Text("EXPORT REPORT", color="white", weight="bold"),
                             ]),
                             bgcolor="#00D118",
-                            padding=ft.padding.all(10),
+                            padding=ft.Padding.all(10),
                             border_radius=8,
                         ),
                         items=[
@@ -584,27 +641,34 @@ async def main(page: ft.Page):
                 ft.Checkbox(label="4", data="ms", on_change=on_filter_change, scale=0.8),
             ], wrap=True, spacing=0)
         ], tight=True, spacing=5, scroll=ft.ScrollMode.AUTO)
-
-    # Search and Filter Components
-    search_field = ft.TextField(
-        hint_text="Search Name...", 
-        prefix_icon=ft.Icons.SEARCH, 
-        expand=True, 
-        on_change=debounce_search,
-        border_radius=10,
-        height=45,
-        text_size=14
-    )
     
-    sort_dir_btn = ft.IconButton(ft.Icons.ARROW_UPWARD, on_click=toggle_sort, icon_size=20)
-    
-    filter_toggle_btn = ft.IconButton(
-        icon=ft.Icons.FILTER_ALT_OUTLINED,
-        on_click=toggle_filter_box,
-        icon_size=20
-    )
+    def build_app_view():
 
-    roster_list = ft.ListView(expand=True, spacing=5)
+        # Search and Filter Components
+        search_field = ft.TextField(
+            hint_text="Search Name...", 
+            prefix_icon=ft.Icons.SEARCH, 
+            expand=True, 
+            on_change=debounce_search,
+            border_radius=10,
+            height=45,
+            text_size=14
+        )
+        
+        sort_dir_btn = ft.IconButton(ft.Icons.ARROW_UPWARD, on_click=toggle_sort, icon_size=20)
+        
+        filter_toggle_btn = ft.IconButton(
+            icon=ft.Icons.FILTER_ALT_OUTLINED,
+            on_click=toggle_filter_box,
+            icon_size=20
+        )
+
+        roster_list = ft.ListView(expand=True, spacing=5)
+
+    return ft.Column([
+        ft.Container(content=ft.Stack([roster_view, task_org_view], expand=True), expand=True), 
+        ft.Row([btn_roster, btn_task_org], spacing=0)
+    ], expand=True, spacing=0)
 
     page.drawer = ft.NavigationDrawer(
         controls=[
@@ -703,7 +767,6 @@ async def main(page: ft.Page):
             page.appbar.leading = None
         else:
             filter_sidebar.visible = False
-            page.appbar.leading = hamburger_btn
         page.update()
 
     page.on_resize = on_page_resize
@@ -724,7 +787,7 @@ async def main(page: ft.Page):
     await update_roster_ui()
 
 if __name__ == "__main__":
-    ft.app(target=main,
-           assets_dir="assets",
-           view=ft.AppView.WEB_BROWSER, 
-           port=8550)
+   ft.run(main,
+       assets_dir="assets",
+       view=ft.AppView.WEB_BROWSER,
+       port=8550)

@@ -2,9 +2,8 @@
 import os
 import sqlite3
 import json
-import time
-import shutil
-from typing import List, Tuple, Optional, Dict
+import bcrypt
+from typing import List, Tuple
 
 DB_PATH = os.environ.get("BULLPEN_DB", "bullpen.db")
 
@@ -19,7 +18,7 @@ def init_db() -> None:
         cur = conn.cursor()
         cur.execute("PRAGMA journal_mode = WAL;")
         
-        # 1. Cadets Table
+        # Cadets Table
         cur.execute("""
         CREATE TABLE IF NOT EXISTS cadets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,12 +26,23 @@ def init_db() -> None:
             ms_level INTEGER,
             school TEXT,
             squad TEXT,
-            tier INTEGER,
-            password_hash TEXT
+            tier INTEGER
         );
         """)
 
-        # 2. Historical Event Log (Timestamped)
+        # Authenticate Users
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS auth_users (
+            id INTEGER PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at INTEGER DEFAULT (strftime('%s','now')),
+            FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
+        );
+        """)
+
+        # Historical Event Log (Timestamped)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS attendance_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +56,7 @@ def init_db() -> None:
         );
         """)
 
-        # 3. Current Attendance Snapshot (For UI Performance)
+        # Current Attendance Snapshot (For UI Performance)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS attendance_current (
             cadet_id INTEGER PRIMARY KEY REFERENCES cadets(id) ON DELETE CASCADE,
@@ -56,7 +66,7 @@ def init_db() -> None:
         );
         """)
 
-        # 4. Export Tracking
+        # Export Tracking
         cur.execute("""
         CREATE TABLE IF NOT EXISTS attendance_exports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,16 +81,54 @@ def init_db() -> None:
     finally:
         conn.close()
 
-# --- CADET MANAGEMENT ---
+# Authentication Logic
 
-def register_cadet(name: str, ms_level: int, school: str, squad: str, tier: int, password_hash: str) -> int:
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def create_auth_user(cadet_id: int, username: str, password: str):
+    conn = _conn(write=True)
+    try:
+        cur = conn.cursor()
+        hashed = hash_password(password)
+        cur.execute("""
+            INSERT INTO auth_users (id, username, password_hash)
+            VALUES (?, ?, ?)
+        """, (cadet_id, username, hashed))
+        conn.commit()
+    finally:
+        conn.close()
+
+def login_user(username: str, password: str):
+    conn = _conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, password_hash FROM auth_users WHERE username = ?
+        """, (username,))
+        row = cur.fetchone()
+
+        if not row:
+            return None
+
+        cadet_id, stored_hash = row
+
+        if bcrypt.checkpw(password.encode(), stored_hash.encode()):
+            return cadet_id  # 👈 THIS is what your app uses
+        return None
+    finally:
+        conn.close()
+
+# Cadet Management
+
+def register_cadet(name: str, ms_level: int, school: str, squad: str, tier: int) -> int:
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO cadets (name, ms_level, school, squad, tier, password_hash)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (name, ms_level, school, squad, tier, password_hash))
+            INSERT INTO cadets (name, ms_level, school, squad, tier)
+            VALUES (?, ?, ?, ?, ?)
+        """, (name, ms_level, school, squad, tier))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -132,7 +180,7 @@ def get_filtered_cadets(query: str = "", schools=None, squads=None, ms_levels=No
     finally:
         conn.close()
 
-# --- ATTENDANCE LOGIC ---
+# Attendance Log
 
 def append_attendance_events(events_list: List[Tuple]):
     """

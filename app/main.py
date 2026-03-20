@@ -51,9 +51,24 @@ async def main(page: ft.Page):
     pending_updates = {}
 
     def build_login_view():
-        username = ft.TextField(label="Username", width=250)
-        password = ft.TextField(label="Password", password=True, can_reveal_password=True, width=250)
-        status_text = ft.Text(color="red")
+
+        username = ft.TextField(
+            label="username",
+            width=300,
+            border_radius=8,
+            bgcolor="#1e1e1e"
+        )
+
+        password = ft.TextField(
+            label="password",
+            password=True,
+            can_reveal_password=True,
+            width=300,
+            border_radius=8,
+            bgcolor="#1e1e1e"
+        )
+
+        status_text = ft.Text(color="red", size=12)
 
         def handle_login(e):
             user_id = login_user(username.value, password.value)
@@ -61,24 +76,104 @@ async def main(page: ft.Page):
             if user_id:
                 current_user["id"] = user_id
                 page.controls.clear()
-                page.add(build_app_view())
+
+                page.add(
+                    ft.Column([
+                        ft.Container(
+                            content=ft.Stack([roster_view, task_org_view], expand=True),
+                            expand=True
+                        ),
+                        ft.Row([btn_roster, btn_task_org], spacing=0)
+                    ], expand=True)
+                )
+
+                page.appbar = ft.AppBar(
+                    title=ft.Text("THE BULL PEN", weight="bold"),
+                    bgcolor=ft.Colors.BLACK,
+                    center_title=True
+                )
+
+                page.floating_action_button = ft.FloatingActionButton(
+                    icon=ft.Icons.ADD,
+                    bgcolor="#012169",
+                    on_click=lambda _: open_cadet_modal()
+                )
+
                 page.update()
+                page.run_task(update_roster_ui)
             else:
-                status_text.value = "Invalid username or password"
+                status_text.value = "Incorrect username or password"
                 page.update()
 
-        return ft.Column(
-            [
-                ft.Text("Login to Bull Pen", size=24, weight="bold"),
-                username,
-                password,
-                ft.ElevatedButton("Login", on_click=handle_login),
-                status_text
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        btn_text = ft.Text("Sign In", weight="bold", color="white")
+
+        def on_hover(e):
+            if e.data == "true":
+                e.control.bgcolor = "white"
+                btn_text.color = "black"
+            else:
+                e.control.bgcolor = "transparent"
+                btn_text.color = "white"
+
+            e.control.update()
+
+        login_button = ft.Container(
+            content=btn_text,
+            width=300,
+            height=45,
+            alignment=ft.Alignment.CENTER,
+            border=ft.Border.all(1, "white"),
+            border_radius=8,
+            bgcolor="transparent",
+            ink=True,
+            on_click=handle_login,
+            on_hover=on_hover
+        )
+
+        # Main Header
+        card = ft.Container(
+            width=380,
+            height=380,
+            padding=10,
+            border_radius=20,
+            bgcolor="#121212",
+            border=ft.Border.all(1, "white10"),
+            content=ft.Column(
+                [
+
+                    ft.Row(
+                        [
+                            ft.Text("THE BULL PEN", size=20, weight="bold"),
+                            ft.Container(expand=True),
+                            ft.Image(src="bcblogo.png", width=80, height=80)
+                        ]
+                    ),
+
+                    ft.Divider(color="white12"),
+
+                    username,
+                    password,
+
+                    login_button,
+
+                    status_text
+                ],
+                spacing=15,
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER
+            )
+        )
+
+        return ft.Container(
+            content=card,
+            alignment=ft.Alignment.CENTER,
             expand=True
         )
+    
+    page.appbar = None
+    page.floating_action_button = None
+
+    page.add(build_login_view())
 
     # Real-time PubSub
 
@@ -641,34 +736,27 @@ async def main(page: ft.Page):
                 ft.Checkbox(label="4", data="ms", on_change=on_filter_change, scale=0.8),
             ], wrap=True, spacing=0)
         ], tight=True, spacing=5, scroll=ft.ScrollMode.AUTO)
+
+    # Search and Filter Components
+    search_field = ft.TextField(
+        hint_text="Search Name...", 
+        prefix_icon=ft.Icons.SEARCH, 
+        expand=True, 
+        on_change=debounce_search,
+        border_radius=10,
+        height=45,
+        text_size=14
+    )
     
-    def build_app_view():
+    sort_dir_btn = ft.IconButton(ft.Icons.ARROW_UPWARD, on_click=toggle_sort, icon_size=20)
+    
+    filter_toggle_btn = ft.IconButton(
+        icon=ft.Icons.FILTER_ALT_OUTLINED,
+        on_click=toggle_filter_box,
+        icon_size=20
+    )
 
-        # Search and Filter Components
-        search_field = ft.TextField(
-            hint_text="Search Name...", 
-            prefix_icon=ft.Icons.SEARCH, 
-            expand=True, 
-            on_change=debounce_search,
-            border_radius=10,
-            height=45,
-            text_size=14
-        )
-        
-        sort_dir_btn = ft.IconButton(ft.Icons.ARROW_UPWARD, on_click=toggle_sort, icon_size=20)
-        
-        filter_toggle_btn = ft.IconButton(
-            icon=ft.Icons.FILTER_ALT_OUTLINED,
-            on_click=toggle_filter_box,
-            icon_size=20
-        )
-
-        roster_list = ft.ListView(expand=True, spacing=5)
-
-    return ft.Column([
-        ft.Container(content=ft.Stack([roster_view, task_org_view], expand=True), expand=True), 
-        ft.Row([btn_roster, btn_task_org], spacing=0)
-    ], expand=True, spacing=0)
+    roster_list = ft.ListView(expand=True, spacing=5)
 
     page.drawer = ft.NavigationDrawer(
         controls=[
@@ -740,12 +828,6 @@ async def main(page: ft.Page):
         btn_roster.bgcolor = "#012169" if is_roster else ft.Colors.GREY_900
         btn_task_org.bgcolor = "#8B2331" if not is_roster else ft.Colors.GREY_900
         page.update()
-    
-    page.appbar = ft.AppBar(
-        title=ft.Text("THE BULL PEN", weight="bold"), 
-        bgcolor=ft.Colors.BLACK,
-        center_title=True
-    )
 
     # Bottom Nav
     rect_style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=0))
@@ -764,30 +846,19 @@ async def main(page: ft.Page):
         if page.width > 800:
             filter_sidebar.visible = True
             filter_anchor.visible = False
-            page.appbar.leading = None
+
+            if page.appbar:
+                page.appbar.leading = None
         else:
             filter_sidebar.visible = False
+
         page.update()
 
     page.on_resize = on_page_resize
 
-    page.floating_action_button = ft.FloatingActionButton(
-    icon=ft.Icons.ADD,
-    bgcolor="#012169",
-    on_click=lambda _: open_cadet_modal()
-    )
-    
-    page.add(
-        ft.Column([
-            ft.Container(content=ft.Stack([roster_view, task_org_view], expand=True), expand=True), 
-            ft.Row([btn_roster, btn_task_org], spacing=0)
-        ], expand=True, spacing=0)
-    )
-    
-    await update_roster_ui()
-
 if __name__ == "__main__":
-   ft.run(main,
-       assets_dir="assets",
+   ft.run(
+       main,
+       assets_dir="../assets",
        view=ft.AppView.WEB_BROWSER,
        port=8550)

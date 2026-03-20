@@ -50,25 +50,9 @@ async def main(page: ft.Page):
     attendance_registry = []
     pending_updates = {}
 
+    task_org_dirty = True
+
     def build_login_view():
-
-        username = ft.TextField(
-            label="username",
-            width=300,
-            border_radius=8,
-            bgcolor="#1e1e1e"
-        )
-
-        password = ft.TextField(
-            label="password",
-            password=True,
-            can_reveal_password=True,
-            width=300,
-            border_radius=8,
-            bgcolor="#1e1e1e"
-        )
-
-        status_text = ft.Text(color="red", size=12)
 
         def handle_login(e):
             user_id = login_user(username.value, password.value)
@@ -101,9 +85,36 @@ async def main(page: ft.Page):
 
                 page.update()
                 page.run_task(update_roster_ui)
+
+                async def preload_attendance():
+                    nonlocal task_org_dirty
+                    task_org_view.content = await build_task_org()
+                    task_org_dirty = False
+
+                page.run_task(preload_attendance)
             else:
                 status_text.value = "Incorrect username or password"
                 page.update()
+
+        username = ft.TextField(
+            label="username",
+            width=300,
+            border_radius=8,
+            bgcolor="#1e1e1e",
+            on_submit=handle_login
+        )
+
+        password = ft.TextField(
+            label="password",
+            password=True,
+            can_reveal_password=True,
+            width=300,
+            border_radius=8,
+            bgcolor="#1e1e1e",
+            on_submit=handle_login
+        )
+
+        status_text = ft.Text(color="red", size=12)
 
         btn_text = ft.Text("Sign In", weight="bold", color="white")
 
@@ -141,13 +152,10 @@ async def main(page: ft.Page):
             content=ft.Column(
                 [
 
-                    ft.Row(
-                        [
-                            ft.Text("THE BULL PEN", size=20, weight="bold"),
-                            ft.Container(expand=True),
-                            ft.Image(src="bcblogo.png", width=80, height=80)
-                        ]
-                    ),
+                    ft.Text("THE BULL PEN", 
+                            size=40,
+                            weight="bold",
+                            text_align=ft.TextAlign.CENTER),
 
                     ft.Divider(color="white12"),
 
@@ -165,9 +173,23 @@ async def main(page: ft.Page):
         )
 
         return ft.Container(
-            content=card,
+            expand=True,
             alignment=ft.Alignment.CENTER,
-            expand=True
+            content=ft.Stack(
+                expand=True,
+                alignment=ft.Alignment.CENTER,
+                controls=[    
+
+                    ft.Image(           
+                        src="bcblogo.png",                           
+                        fit=ft.BoxFit.CONTAIN,
+                        opacity=0.10,
+                        width=1000,
+                        height=1000            
+                    ),
+                    card
+                ]
+            )
         )
     
     page.appbar = None
@@ -175,22 +197,43 @@ async def main(page: ft.Page):
 
     page.add(build_login_view())
 
+    def handle_logout(e=None):
+        page.drawer.open = False
+
+        current_user["id"] = None
+
+        page.controls.clear()
+        page.appbar = None
+        page.drawer = None
+        page.floating_action_button = None
+
+        page.add(build_login_view())
+
+        page.update()
+
     # Real-time PubSub
 
     def on_broadcast(msg):
+
+        if not current_user["id"]:
+            return
+
         if msg in ["roster_updated", "attendance_flushed"]:
             page.run_task(update_roster_ui)
-            if task_org_view.visible:
-                async def refresh_task_org():
-                    task_org_view.content = await build_task_org()
-                    page.update()
-                page.run_task(refresh_task_org)
-            else:
-                page.update()
+
+            # Mark attendance view as needing refresh
+            nonlocal task_org_dirty
+            task_org_dirty = True
+
+            page.update()
 
     page.pubsub.subscribe(on_broadcast)
 
     async def update_roster_ui():
+
+        if not current_user["id"]:
+            return
+
         query = search_field.value if search_field.value else ""
         direction = "ASC" if sort_ascending else "DESC"
 
@@ -220,6 +263,10 @@ async def main(page: ft.Page):
         page.update()
 
     async def debounce_search(e):
+
+        if not current_user["id"]:
+            return
+
         nonlocal search_task
         if search_task and not search_task.done():
             search_task.cancel()
@@ -581,6 +628,10 @@ async def main(page: ft.Page):
         page.update()
 
     async def build_task_org():
+
+        if not current_user["id"]:
+            return
+
         attendance_registry.clear()
         cadets = await asyncio.to_thread(get_filtered_cadets, "", [], [], [], "ASC")
         
@@ -761,8 +812,20 @@ async def main(page: ft.Page):
     page.drawer = ft.NavigationDrawer(
         controls=[
             ft.Container(
-                content=ft.Text("WELCOME TO THE BULL PEN", size=24, weight="bold", color="white"),
+                content=ft.Text(
+                    "WELCOME TO THE BULL PEN", 
+                    size=24, 
+                    weight="bold", 
+                    color="white"
+                ),
                 padding=40
+            ),
+
+            ft.Divider(),
+            ft.ListTile(
+            leading=ft.Icon(ft.Icons.LOGOUT),
+            title=ft.Text("Logout"),
+            on_click=handle_logout
             )
         ],
     )
@@ -819,11 +882,14 @@ async def main(page: ft.Page):
     )
 
     async def show_view(is_roster):
+        nonlocal task_org_dirty
         filter_anchor.visible = False
         roster_view.visible, task_org_view.visible = is_roster, not is_roster
 
-        if not is_roster and not task_org_view.content:
-            task_org_view.content = await build_task_org()
+        if not is_roster:
+            if not task_org_view.content or task_org_dirty:
+                task_org_view.content = await build_task_org()
+                task_org_dirty = False
             
         btn_roster.bgcolor = "#012169" if is_roster else ft.Colors.GREY_900
         btn_task_org.bgcolor = "#8B2331" if not is_roster else ft.Colors.GREY_900

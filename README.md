@@ -63,7 +63,7 @@ The **Bull Pen** is a mobile-responsive application designed to digitize and str
 
 ---
 
-## 🛣️ Development Roadmap
+## Development Roadmap
 
 * **Expanded Cadet Profiles**
   Academic majors, branch preferences, and emergency contact integration.

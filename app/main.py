@@ -32,10 +32,6 @@ async def main(page: ft.Page):
     }
 
     def past_n_weeks_range(weeks: int) -> tuple:
-        """
-        Returns (start_ts, end_ts) for the last `weeks` weeks ending now.
-        Example for 2 weeks returns (now - 14 days, now).
-        """
         now = datetime.datetime.now()
         end_ts = int(now.timestamp())
         start_ts = int((now - datetime.timedelta(days=weeks*7)).timestamp())
@@ -50,6 +46,11 @@ async def main(page: ft.Page):
     # Page Configuration
     page.title = "THE BULL PEN"
     page.theme_mode = ft.ThemeMode.DARK
+
+    page.fonts = {
+        "custom": "Marathon.otf",
+        "standard": "Proxima Nova Semibold.ttf"
+    }
     page.padding = 0
 
     active_schools = set()
@@ -82,7 +83,7 @@ async def main(page: ft.Page):
                 )
 
                 page.appbar = ft.AppBar(
-                    title=ft.Text("THE BULL PEN", weight="bold"),
+                    title=ft.Text("THE BULL PEN", font_family="standard"),
                     bgcolor=ft.Colors.BLACK,
                     center_title=True
                 )
@@ -129,7 +130,7 @@ async def main(page: ft.Page):
 
         status_text = ft.Text(color="red", size=12)
 
-        btn_text = ft.Text("Sign In", weight="bold", color="white")
+        btn_text = ft.Text("ENTER", weight="bold", color="white")
 
         def on_hover(e):
             if e.data == "true":
@@ -157,20 +158,28 @@ async def main(page: ft.Page):
         # Main Header
         card = ft.Container(
             width=380,
-            height=380,
+            height=500,
             padding=10,
             border_radius=20,
             bgcolor="#121212",
             border=ft.Border.all(1, "white10"),
             content=ft.Column(
                 [
-
+                    ft.Container(height=10),
+                    ft.Text("Welcome To", 
+                            size=30,
+                            text_align=ft.TextAlign.CENTER,
+                            font_family="custom"),
                     ft.Text("THE BULL PEN", 
-                            size=40,
-                            weight="bold",
-                            text_align=ft.TextAlign.CENTER),
+                            size=100,
+                            text_align=ft.TextAlign.CENTER,
+                            font_family="custom"),
+
+                    ft.Container(height=5),
 
                     ft.Divider(color="white12"),
+
+                    ft.Container(height=10),
 
                     username,
                     password,
@@ -179,7 +188,7 @@ async def main(page: ft.Page):
 
                     status_text
                 ],
-                spacing=15,
+                spacing=8,
                 alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER
             )
@@ -256,6 +265,14 @@ async def main(page: ft.Page):
         )
         
         roster_list.controls.clear()
+
+        tier_names = {
+            0: "COMMAND",
+            1: "OFFICER",
+            2: "SL",
+            3: "CDT"
+        }
+
         for cadet in cadets:
             c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet
             name_parts = c_name.split(" ", 1)
@@ -296,7 +313,7 @@ async def main(page: ft.Page):
                             bgcolor=school_color
                         ),
                         title=ft.Text(display_name),
-                        subtitle=ft.Text(f"MS{c_ms} | {c_squad}"),
+                        subtitle=ft.Text(f"MS{c_ms} | {c_squad} | {tier_names.get(c_tier, 'UNK')}"),
                         trailing=ft.PopupMenuButton(items=menu_items) if menu_items else None,
                         on_click=lambda e, d=cadet: view_cadet_modal(d)
                     )
@@ -371,10 +388,6 @@ async def main(page: ft.Page):
         flush_task = asyncio.create_task(flush_logic())
 
     async def handle_save_csv(e):
-        """
-        Export the last 2 weeks, snapshot into attendance_exports, write CSV file,
-        then clear the exported events and reset attendance_current so UI is fresh.
-        """
         if not attendance_registry:
             return
 
@@ -1148,11 +1161,19 @@ async def main(page: ft.Page):
         page.update()
 
     # Bottom Nav
-    rect_style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=0))
+    rect_style = ft.ButtonStyle(
+        shape=ft.RoundedRectangleBorder(radius=0),
+        text_style=ft.TextStyle(font_family="standard")  # 🔧 merge here
+    )
+
     btn_roster = ft.Button(
-        "ROSTER", bgcolor="#012169", color="white",
+        "ROSTER", 
+        bgcolor="#012169", 
+        color="white", 
         on_click=lambda e: asyncio.create_task(show_view(True)),
-        expand=True, height=60, style=rect_style
+        expand=True, 
+        height=60, 
+        style=rect_style
     )
 
 
@@ -1182,6 +1203,11 @@ async def main(page: ft.Page):
             return
 
         asyncio.create_task(show_view(False))
+
+    rect_style = ft.ButtonStyle(
+        shape=ft.RoundedRectangleBorder(radius=0),
+        text_style=ft.TextStyle(font_family="standard")
+    )
 
     btn_task_org = ft.Button(
         "ATTENDANCE",

@@ -1,0 +1,121 @@
+===== LOGINS =====
+
+Cadet 1st Squad 1
+  username: cadet1stsquad1
+  password: password123
+
+Cadet 1st Squad 2
+  username: cadet1stsquad2
+  password: password123
+
+Cadet 1st Squad 3
+  username: cadet1stsquad3
+  password: password123
+
+Cadet 1st Squad 4
+  username: cadet1stsquad4
+  password: password123
+
+Cadet 1st Squad 5
+  username: cadet1stsquad5
+  password: password123
+
+Leader 1st Squad
+  username: leader1stsquad
+  password: password123
+
+Cadet 2nd Squad 1
+  username: cadet2ndsquad1
+  password: password123
+
+Cadet 2nd Squad 2
+  username: cadet2ndsquad2
+  password: password123
+
+Cadet 2nd Squad 3
+  username: cadet2ndsquad3
+  password: password123
+
+Cadet 2nd Squad 4
+  username: cadet2ndsquad4
+  password: password123
+
+Cadet 2nd Squad 5
+  username: cadet2ndsquad5
+  password: password123
+
+Leader 2nd Squad
+  username: leader2ndsquad
+  password: password123
+
+Cadet 3rd Squad 1
+  username: cadet3rdsquad1
+  password: password123
+
+Cadet 3rd Squad 2
+  username: cadet3rdsquad2
+  password: password123
+
+Cadet 3rd Squad 3
+  username: cadet3rdsquad3
+  password: password123
+
+Cadet 3rd Squad 4
+  username: cadet3rdsquad4
+  password: password123
+
+Cadet 3rd Squad 5
+  username: cadet3rdsquad5
+  password: password123
+
+Leader 3rd Squad
+  username: leader3rdsquad
+  password: password123
+
+Cadet 4th Squad 1
+  username: cadet4thsquad1
+  password: password123
+
+Cadet 4th Squad 2
+  username: cadet4thsquad2
+  password: password123
+
+Cadet 4th Squad 3
+  username: cadet4thsquad3
+  password: password123
+
+Cadet 4th Squad 4
+  username: cadet4thsquad4
+  password: password123
+
+Cadet 4th Squad 5
+  username: cadet4thsquad5
+  password: password123
+
+Leader 4th Squad
+  username: leader4thsquad
+  password: password123
+
+Admin MS4
+  username: adminms4
+  password: admin123
+
+Cadet MS4 1
+  username: cadetms41
+  password: password123
+
+Cadet MS4 2
+  username: cadetms42
+  password: password123
+
+Cadet MS4 3
+  username: cadetms43
+  password: password123
+
+Cadet MS4 4
+  username: cadetms44
+  password: password123
+
+Superadmin MS4
+  username: superadminms4
+  password: admin123

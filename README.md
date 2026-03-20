@@ -1,32 +1,120 @@
-# The Bull Pen: Accountability Tracker
-As a third-year cadet at Duke and NCCU's Army ROTC: "The Bull City Battlion," I am no stranger to the lack of optimization present in both cadet personal information as well as accountability on important days and events for the organization. The Bull Pen: Accountability Tracker aims to not only optimize accountability, but to include added functionality; profiles, protected database entries, and improved UI functionality. 
+# The Bull Pen
 
-## How It's Made:
+### ROTC Battalion Management and Accountability Suite
 
-**Tech used:** Python, Flet (Flutter/Material Design), SQLite
+The **Bull Pen** is a mobile-responsive application designed to digitize and streamline Army ROTC accountability protocols. It replaces traditional manual tracking with a centralized, data-driven platform for real-time attendance, cadet performance analytics, and automated command reporting.
 
-Developing this application required a deep dive into the Flet framework, which allowed me to leverage the speed of Python with the polished, responsive UI of Flutter’s Material Design.
+---
 
-    Logic over Syntax: I focused heavily on creating a modular backend. Instead of hard-coding cadet data, I built a relational database using SQLite. This ensures that even if the app closes or the system crashes, no "boots on the ground" data is lost.
+## Core System Functionality
 
-    The User-Centric UI: Understanding that cadets might be using this at 0530 during a rainy APFT, I prioritized high-contrast Material Design elements and large touch targets. I didn't just want it to work; I wanted it to be "Soldier-proof."
+### 1. High-Concurrency Accountability
 
-    State Management: I implemented custom logic to handle real-time UI updates. When a cadet’s status changes in the database, the Flet UI reflects that change instantly without requiring a full page refresh, mimicking the responsiveness of high-end enterprise software.
+* **Asynchronous Batch Processing**
+  Utilizes `asyncio` flush-task logic to handle high-frequency UI updates efficiently. Rapid attendance toggles are queued and processed without database contention or UI freezing.
 
-## Optimizations
+* **Task Organization Dashboard**
+  Centralized squad-based interface for managing:
 
-Database Normalization: Originally, I was storing all data in a single, massive table. I refactored the schema to use relational keys, which significantly reduced data redundancy and made queries for specific squads or platoons much faster.
+  * TUE / WED / THU PT attendance
+  * Leadership Lab attendance
 
-Asynchronous Processing: To keep the UI from "freezing" during heavy database writes, I utilized Python’s asynchronous capabilities. This ensures that the user can keep navigating the app while the database handles the heavy lifting in the background.
+---
 
-Asset Management: I optimized the way the app handles icons and images, ensuring the executable remains lightweight enough to be shared easily among unit leadership without requiring a complex installation process.
+### 2. Automated Command Reporting
 
-## Lessons Learned:
+* **Document Generation**
+  Integrated `FPDF2` engine for generating formal attendance reports.
 
-The Intersection of Lead & Tech: The biggest takeaway wasn't a line of code, but the realization that technical competence is a leadership multiplier. Being able to identify a friction point in the battalion and build a solution from scratch gave me a new perspective on "Leading from the Front."
+* **Data Visualization**
+  Uses `matplotlib` to embed MS-level distribution charts directly into PDF exports for immediate analysis.
 
-Security Mindset: Building the "Protected Database Entries" taught me the importance of data validation. I learned that you have to assume the user will input the wrong data type and build "guardrails" to prevent the database from breaking—a core tenet of the Cyber branch mindset.
+* **Data Portability**
+  Supports Base64-encoded exports:
 
-Iterative Design: I learned that "done is better than perfect." I spent hours over-engineering a single feature, only to realize that the end-user (my fellow cadets) just needed a simple, working button. It taught me to prioritize mission-essential functions over "flashy" extras.
+  * CSV
+  * Excel
 
+---
 
+### 3. Security and Access Control
+
+* **Cryptographic Hashing**
+  Passwords are secured using `bcrypt` to ensure data integrity and cadet privacy.
+
+* **Role-Based Access Control (RBAC)**
+
+  | Tier   | Role          | Permissions                                                |
+  | ------ | ------------- | ---------------------------------------------------------- |
+  | Tier 1 | Admin / Staff | Full system control, database management, global reporting |
+  | Tier 2 | Squad Leader  | Unit-level accountability, dashboard access                |
+  | Tier 3 | Cadet         | Personal profile management and performance tracking       |
+
+---
+
+## Technical Architecture
+
+| Component        | Specification                          |
+| ---------------- | -------------------------------------- |
+| Frontend         | Flet (Python-based Flutter framework)  |
+| Database         | SQLite3 with Write-Ahead Logging (WAL) |
+| Async Runtime    | Python `asyncio`                       |
+| Reporting Engine | Matplotlib + FPDF2                     |
+
+---
+
+## Development Roadmap
+
+* **Expanded Cadet Profiles**
+  Academic majors, branch preferences, and emergency contact integration.
+
+* **Performance Analytics**
+  Longitudinal tracking of APFT / ACFT scores with visual progress dashboards.
+
+* **Asset Management**
+  Support for profile images and digitized cadet records.
+
+* **Authentication Integration**
+  Single Sign-On (SSO) for university-level security compliance.
+
+---
+
+## Installation & Deployment
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-username/the-bull-pen.git
+```
+
+### 2. Install Dependencies
+
+```bash
+pip install flet bcrypt fpdf2 matplotlib
+```
+
+### 3. Initialize the Database
+
+```bash
+python seed.py
+```
+
+### 4. Run the Application
+
+```bash
+python main.py
+```
+
+---
+
+## Lead Developer
+
+**Marcus McFadden**
+Duke University
+Computer Science & Asian & Middle Eastern Studies
+
+---
+
+## Notes
+
+This project is designed for scalability, maintainability, and real-world ROTC operational efficiency. Contributions and feature suggestions are welcome.

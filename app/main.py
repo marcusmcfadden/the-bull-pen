@@ -43,6 +43,12 @@ async def main(page: ft.Page):
 
     init_db()
 
+    from seed import seed_data
+    import os
+
+    if not os.path.exists("bullpen.db"):
+        seed_data()
+
     # Page Configuration
     page.title = "THE BULL PEN"
     page.theme_mode = ft.ThemeMode.DARK
@@ -1236,6 +1242,7 @@ async def main(page: ft.Page):
 if __name__ == "__main__":
    ft.run(
        main,
-       assets_dir="../assets",
+       assets_dir="assets",
        view=ft.AppView.WEB_BROWSER,
-       port=8550)
+       port=int(os.environ.get("PORT", 8080))
+   )

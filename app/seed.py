@@ -31,37 +31,63 @@ def generate_unique_username(base_username, cursor):
         counter += 1
 
 def gen_cadets():
-
     test_cadets = []
-    
+
     squad_names = ["1st Squad", "2nd Squad", "3rd Squad", "4th Squad"]
-    
+
     for squad in squad_names:
-        for i in range(6):
-            # Requirements: 1 per squad is Tier 2, 3 Duke (D), 3 NCCU (N)
-            tier = 2 if i == 0 else 3
-            school = "D" if i < 3 else "N"
-            ms_level = (i % 4 ) + 1
-            
-            last = f"Cadet{squad[0]}{i+1}"
-            first = f"{school}-MS{ms_level}"
-            name = f"{last}, {first}"
-            password = "password123"
 
-            test_cadets.append((name, ms_level, school, squad, tier, password))
+        test_cadets.append((
+            f"Leader {squad}",
+            3,
+            "D",
+            squad,
+            2,
+            "password123"
+        ))
 
-    # MS4: 6 Students, No Squad (Squad = "MS4")
-    for i in range(6):
-        school = "D" if i < 3 else "N"
-        # 1 Admin (Tier 1), the rest Tier 3 or 2
-        tier = 1 if i == 0 else 3
+        for i in range(1, 6):
+            school = "D" if i <= 3 else "N"
+            ms_level = (i % 3) + 1
 
-        last = f"StaffCadet{i+1}"
-        first = f"{school}-MS4"
-        name = f"{last}, {first}"
-        password = "admin123"
+            test_cadets.append((
+                f"Cadet {squad} {i}",
+                ms_level,
+                school,
+                squad,
+                3,
+                "password123"
+            ))
 
-        test_cadets.append((name, 4, school, "MS4", tier, "admin123"))
+    test_cadets.append((
+        "Superadmin MS4",
+        4,
+        "D",
+        "MS4",
+        0,
+        "admin123"
+    ))
+
+    test_cadets.append((
+        "Admin MS4",
+        4,
+        "D",
+        "MS4",
+        1,
+        "admin123"
+    ))
+
+    for i in range(1, 5):
+        school = "D" if i <= 2 else "N"
+
+        test_cadets.append((
+            f"Cadet MS4 {i}",
+            4,
+            school,
+            "MS4",
+            3,
+            "password123"
+        ))
 
     return test_cadets
 
@@ -83,7 +109,7 @@ def login_credentials():
     lines.append("===== LOGINS =====\n")
 
     for name, username in rows:
-        if "StaffCadet" in name:
+        if "Admin" in name or "Superadmin" in name:
             password = "admin123"
         else:
             password = "password123"
@@ -99,10 +125,10 @@ def login_credentials():
 
     content = "\n".join(lines)
 
-    with open("login.txt", "w") as f:
+    with open("seed.txt", "w") as f:
         f.write(content)
 
-    print("Login credentials written to login.txt")
+    print("Login credentials written to seed.txt")
 
 def seed_data():
     reset_tables()

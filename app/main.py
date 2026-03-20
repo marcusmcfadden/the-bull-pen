@@ -9,17 +9,27 @@ from database import (
     update_cadet,
     register_cadet,
     create_auth_user,
-    login_user,
     delete_cadet,
     create_attendance_export,
     clear_attendance_for_new_week,
     _conn
 )
 import attendance_save
+from rbac import (
+    authenticate_user,
+    can_edit,
+    can_delete,
+    get_user_by_id
+)
 
 async def main(page: ft.Page):
 
-    current_user = {"id": None}
+    current_user = {
+        "id": None,
+        "tier": None,
+        "name": None,
+        "squad": None,
+    }
 
     def past_n_weeks_range(weeks: int) -> tuple:
         """
@@ -55,10 +65,10 @@ async def main(page: ft.Page):
     def build_login_view():
 
         def handle_login(e):
-            user_id = login_user(username.value, password.value)
+            user = authenticate_user(username.value, password.value)
 
-            if user_id:
-                current_user["id"] = user_id
+            if user:
+                current_user.update(user)
                 page.controls.clear()
 
                 page.add(
@@ -77,11 +87,14 @@ async def main(page: ft.Page):
                     center_title=True
                 )
 
-                page.floating_action_button = ft.FloatingActionButton(
-                    icon=ft.Icons.ADD,
-                    bgcolor="#012169",
-                    on_click=lambda _: open_cadet_modal()
-                )
+                if current_user["tier"] <= 1:
+                    page.floating_action_button = ft.FloatingActionButton(
+                        icon=ft.Icons.ADD,
+                        bgcolor="#012169",
+                        on_click=lambda _: open_cadet_modal()
+                    )
+                else:
+                    page.floating_action_button = None
 
                 page.update()
                 page.run_task(update_roster_ui)
@@ -248,17 +261,46 @@ async def main(page: ft.Page):
             name_parts = c_name.split(" ", 1)
             display_name = f"{name_parts[1]}, {name_parts[0]}" if len(name_parts) > 1 else c_name
             school_color = "#012169" if c_school == "D" else "#8B2331"
-                
+
+            target = {
+                "id":c_id,
+                "tier":c_tier,
+                "squad":c_squad,
+            }
+
+            menu_items =[]
+
+            if can_edit(current_user, target):
+                menu_items.append(
+                    ft.PopupMenuItem(
+                        "Edit",
+                        icon=ft.Icons.EDIT,
+                        on_click=lambda _, d=cadet: open_cadet_modal(d)
+                    )
+                )
+
+            if can_delete(current_user, target):
+                menu_items.append(
+                    ft.PopupMenuItem(
+                        "Delete",
+                        icon=ft.Icons.DELETE_OUTLINE,
+                        on_click=lambda _, i=c_id, n=c_name: confirm_delete(i, n)
+                    )
+                )
+
             roster_list.controls.append(
-                ft.Card(content=ft.ListTile(
-                    leading=ft.CircleAvatar(content=ft.Text(display_name[0]), bgcolor=school_color),
-                    title=ft.Text(display_name),
-                    subtitle=ft.Text(f"MS{c_ms} | {c_squad}"),
-                    trailing=ft.PopupMenuButton(items=[
-                        ft.PopupMenuItem("Edit", icon=ft.Icons.EDIT, on_click=lambda _, d=cadet: open_cadet_modal(d)),
-                        ft.PopupMenuItem("Delete", icon=ft.Icons.DELETE_OUTLINE, on_click=lambda _, i=c_id, n=c_name: confirm_delete(i, n)),
-                    ])
-                ))
+                ft.Card(
+                    content=ft.ListTile(
+                        leading=ft.CircleAvatar(
+                            content=ft.Text(display_name[0]),
+                            bgcolor=school_color
+                        ),
+                        title=ft.Text(display_name),
+                        subtitle=ft.Text(f"MS{c_ms} | {c_squad}"),
+                        trailing=ft.PopupMenuButton(items=menu_items) if menu_items else None,
+                        on_click=lambda e, d=cadet: view_cadet_modal(d)
+                    )
+                )
             )
         page.update()
 
@@ -480,6 +522,17 @@ async def main(page: ft.Page):
         asyncio.create_task(fetch_and_update())
 
     def open_cadet_modal(cadet_data=None):
+
+        if cadet_data:
+            target = {
+                "id": cadet_data[0],
+                "tier": cadet_data[5],
+                "squad": cadet_data[4],
+            }
+
+            if not can_edit(current_user, target):
+                return
+
         is_edit = cadet_data is not None
         
         full_name = cadet_data[1] if is_edit else ""
@@ -517,32 +570,167 @@ async def main(page: ft.Page):
             ]
         )
 
-        def save_clicked(e):
-            combined_name = f"{first_name.value} {last_name.value}".strip()
-            if is_edit:
-                update_cadet(cadet_data[0], combined_name, int(ms_level.value), 
-                             school_dropdown.value, squad_dropdown.value, cadet_data[5])
-            else:
-                combined_name = f"{first_name.value} {last_name.value}".strip()
+        if current_user["tier"] == 0:  # superadmin
+            tier_options = [
+                ft.dropdown.Option("0", "Command"),
+                ft.dropdown.Option("1", "Officer"),
+                ft.dropdown.Option("2", "Leader"),
+                ft.dropdown.Option("3", "Cadet"),
+            ]
+        elif current_user["tier"] == 1:  # admin
+            tier_options = [
+                ft.dropdown.Option("2", "Leader"),
+                ft.dropdown.Option("3", "Cadet"),
+            ]
+        else:
+            tier_options = []
 
-                cadet_id = register_cadet(
-                    combined_name,
-                    int(ms_level.value),
-                    school_dropdown.value,
-                    squad_dropdown.value,
-                    3
+        tier_dropdown = ft.Dropdown(
+            label="Tier",
+            value=str(cadet_data[5]) if is_edit else "3",
+            options=tier_options,
+            width=120,
+            visible=current_user["tier"] <= 1
+        )
+
+        def close_dialog(dialog):
+            dialog.open = False
+            page.update()
+
+        def check_no_leader_dialog(squad):
+            conn = _conn()
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT COUNT(*) FROM cadets
+                WHERE squad = ? AND tier = 2
+            """, (squad,))
+
+            count = cur.fetchone()[0]
+            conn.close()
+
+            if count == 0:
+                show_no_leader_dialog(squad)
+
+        def show_no_leader_dialog(squad):
+
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Warning"),
+                content=ft.Text(f"{squad} currently has no squad leader"),
+                actions=[
+                    ft.TextButton("OK", on_click=lambda _: close_dialog(dialog))
+                ]
+            )
+
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
+
+        def save_clicked(e):
+
+            combined_name = f"{first_name.value} {last_name.value}".strip()
+            new_tier = int(tier_dropdown.value) if current_user["tier"] <= 1 else cadet_data[5]
+
+            cadet_id = cadet_data[0] if is_edit else None
+            old_tier = cadet_data[5] if is_edit else None
+            squad = squad_dropdown.value
+
+            def continue_save():
+
+                if is_edit:
+
+                    # enforce single leader
+                    if new_tier == 2:
+                        conn = _conn(write=True)
+                        cur = conn.cursor()
+
+                        cur.execute("""
+                            UPDATE cadets
+                            SET tier = 3
+                            WHERE squad = ? AND tier = 2 AND id != ?
+                        """, (squad, cadet_id))
+
+                        conn.commit()
+                        conn.close()
+
+                    update_cadet(
+                        cadet_id,
+                        combined_name,
+                        int(ms_level.value),
+                        school_dropdown.value,
+                        squad_dropdown.value,
+                        new_tier
+                    )
+
+                    # check missing leader
+                    if old_tier == 2 and new_tier != 2:
+                        check_no_leader_dialog(squad)
+
+                else:
+                    cadet_id_new = register_cadet(
+                        combined_name,
+                        int(ms_level.value),
+                        school_dropdown.value,
+                        squad_dropdown.value,
+                        new_tier
+                    )
+
+                    username = combined_name.lower().replace(" ", "")
+                    password = "password123"
+
+                    create_auth_user(cadet_id_new, username, password)
+
+                dialog.open = False
+                page.pubsub.send_all("roster_updated")
+                page.update()
+
+            if current_user["tier"] == 1 and new_tier <= 1:
+
+                dialog_block = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Access Denied"),
+                    content=ft.Text("You cannot assign Admin or Superadmin roles"),
+                    actions=[
+                        ft.TextButton("OK", on_click=lambda _: close_dialog(dialog_block))
+                    ]
                 )
 
-                username = combined_name.lower().replace(" ", "")
-                password = "password123"
+                page.overlay.append(dialog_block)
+                dialog_block.open = True
+                page.update()
+                return
 
-                create_auth_user(cadet_id, username, password)
-            
-            dialog.open = False
-            
-            page.pubsub.send_all("roster_updated")
+            if current_user["tier"] == 1 and new_tier == 2:
 
-            page.update()
+                def confirm_promote(e):
+                    dialog_confirm.open = False
+                    page.update()
+                    continue_save()
+
+                def cancel_promote(e):
+                    dialog_confirm.open = False
+                    page.update()
+
+                dialog_confirm = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Confirm Promotion"),
+                    content=ft.Text(
+                        "Are you sure you want to promote this cadet to Leader?\n\n"
+                        "This action cannot be undone with your authority."
+                    ),
+                    actions=[
+                        ft.TextButton("Cancel", on_click=cancel_promote),
+                        ft.TextButton("Confirm", on_click=confirm_promote),
+                    ]
+                )
+
+                page.overlay.append(dialog_confirm)
+                dialog_confirm.open = True
+                page.update()
+                return
+
+            continue_save()
 
         # Build the UI Structure
         dialog = ft.AlertDialog(
@@ -564,6 +752,7 @@ async def main(page: ft.Page):
                                 ft.Row([first_name, last_name]),
                                 school_dropdown,
                                 ft.Row([ms_level, squad_dropdown]),
+                                tier_dropdown,
                             ], expand=True, spacing=15)
                         ])
                     ),
@@ -578,25 +767,88 @@ async def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-    def confirm_delete(cadet_id, cadet_name):
-            def finalize_delete(e):
-                delete_cadet(cadet_id)
-                confirm_dialog.open = False 
-                page.pubsub.send_all("roster_updated")
-                page.update()
+    def view_cadet_modal(cadet_data):
+        c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet_data
 
-            # Define the dialog
-            confirm_dialog = ft.AlertDialog(
-                title=ft.Text("Confirm Deletion"),
-                content=ft.Text(f"Are you sure you want to delete {cadet_name}? This action cannot be undone."),
-                actions=[
-                    ft.TextButton("Cancel", on_click=lambda _: [setattr(confirm_dialog, "open", False), page.update()]),
-                    ft.Button("Delete", bgcolor=ft.Colors.RED_700, color="white", on_click=finalize_delete),
-                ],
-            )
-            page.overlay.append(confirm_dialog)
-            confirm_dialog.open = True
+        school_color = "#012169" if c_school == "D" else "#8B2331"
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Cadet Profile"),
+            content=ft.Container(
+                width=500,
+                height=220,
+                padding=20,
+                content=ft.Row([
+                    # LEFT: Profile Pic
+                    ft.Column([
+                        ft.CircleAvatar(
+                            content=ft.Text(c_name[0]),
+                            radius=50,
+                            bgcolor=school_color
+                        ),
+                        ft.Text("PHOTO", size=10)
+                    ], horizontal_alignment="center", width=120),
+
+                    ft.VerticalDivider(width=1, color="white24"),
+
+                    # RIGHT: Info
+                    ft.Column([
+                        ft.Text(c_name, size=20, weight="bold"),
+
+                        ft.Divider(),
+
+                        ft.Row([
+                            ft.Text("MS Level:", weight="bold"),
+                            ft.Text(f"MS{c_ms}")
+                        ]),
+
+                        ft.Row([
+                            ft.Text("Squad:", weight="bold"),
+                            ft.Text(c_squad)
+                        ]),
+
+                        ft.Row([
+                            ft.Text("School:", weight="bold"),
+                            ft.Text("Duke" if c_school == "D" else "NCCU")
+                        ]),
+                    ], spacing=10, expand=True)
+                ])
+            ),
+            actions=[
+                ft.TextButton("Close", on_click=lambda _: [setattr(dialog, "open", False), page.update()])
+            ],
+        )
+
+        page.overlay.append(dialog)
+        dialog.open = True
+        page.update()
+
+    def confirm_delete(cadet_id, cadet_name):
+
+        target = get_user_by_id(cadet_id)
+
+        if not can_delete(current_user, target):
+            return
+
+        def finalize_delete(e):
+            delete_cadet(cadet_id)
+            confirm_dialog.open = False 
+            page.pubsub.send_all("roster_updated")
             page.update()
+
+        confirm_dialog = ft.AlertDialog(
+            title=ft.Text("Confirm Deletion"),
+            content=ft.Text(f"Are you sure you want to delete {cadet_name}?"),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda _: [setattr(confirm_dialog, "open", False), page.update()]),
+                ft.Button("Delete", bgcolor=ft.Colors.RED_700, color="white", on_click=finalize_delete),
+            ],
+        )
+
+        page.overlay.append(confirm_dialog)
+        confirm_dialog.open = True
+        page.update()
 
     def toggle_sort(e):
         nonlocal sort_ascending
@@ -902,10 +1154,43 @@ async def main(page: ft.Page):
         on_click=lambda e: asyncio.create_task(show_view(True)),
         expand=True, height=60, style=rect_style
     )
+
+
+    def handle_attendance_click(e):
+        if current_user["tier"] is not None and current_user["tier"] > 2:
+
+            def close_dialog(e):
+                dialog.open = False
+                page.update()
+
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Access Denied"),
+                content=ft.Text("You don't have permission to access this section"),
+                actions=[
+                    ft.TextButton(
+                        "OK",
+                        on_click=lambda _: close_dialog(dialog)
+                    )
+                ]
+            )
+
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
+
+            return
+
+        asyncio.create_task(show_view(False))
+
     btn_task_org = ft.Button(
-        "ATTENDANCE", bgcolor="grey900", color="white",
-        on_click=lambda e: asyncio.create_task(show_view(False)),
-        expand=True, height=60, style=rect_style
+        "ATTENDANCE",
+        bgcolor="grey900",
+        color="white",
+        on_click=handle_attendance_click,
+        expand=True,
+        height=60,
+        style=rect_style
     )
 
     def on_page_resize(e):

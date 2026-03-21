@@ -12,3 +12,4 @@ env/
 *.sqlite
 *.sqlite3
 *.pdf
+*.txt

@@ -2,89 +2,113 @@
 
 ### ROTC Battalion Management and Accountability Suite
 
-The **Bull Pen** is a mobile-responsive application designed to digitize and streamline Army ROTC accountability protocols. It replaces traditional manual tracking with a centralized, data-driven platform for real-time attendance, cadet performance analytics, and automated command reporting.
+The **Bull Pen** is a production-ready, mobile-responsive application designed to digitize and modernize Army ROTC accountability protocols. It replaces traditional manual tracking with a centralized, data-driven platform for real-time attendance, cadet performance analytics, and automated command reporting.
 
 ---
 
-## Core System Functionality
+## Key Features
 
 ### 1. High-Concurrency Accountability
 
-* **Asynchronous Batch Processing**
-  Utilizes `asyncio` flush-task logic to handle high-frequency UI updates efficiently. Rapid attendance toggles are queued and processed without database contention or UI freezing.
+- **Asynchronous Batch Processing**  
+  Built with Python `asyncio` to handle rapid, high-frequency attendance updates without UI freezing or database contention. Toggle-heavy workflows are queued and flushed efficiently.
 
-* **Task Organization Dashboard**
-  Centralized squad-based interface for managing:
+- **Real-Time Dashboard**  
+  Squad-based interface for managing:
+  - TUE / WED / THU PT attendance
+  - Leadership Lab attendance
 
-  * TUE / WED / THU PT attendance
-  * Leadership Lab attendance
+- **Responsive UI**  
+  Powered by **Flet**, enabling cross-platform (desktop + mobile) usability with a clean, fast interface.
 
 ---
 
 ### 2. Automated Command Reporting
 
-* **Document Generation**
-  Integrated `FPDF2` engine for generating formal attendance reports.
+- **PDF Report Generation**  
+  Integrated `FPDF2` engine produces formal, command-ready attendance reports.
 
-* **Data Visualization**
-  Uses `matplotlib` to embed MS-level distribution charts directly into PDF exports for immediate analysis.
+- **Embedded Data Visualization**  
+  Uses `matplotlib` to generate MS-level distribution charts directly inside exported PDFs.
 
-* **Data Portability**
-  Supports Base64-encoded exports:
-
-  * CSV
-  * Excel
-
----
-
-### 3. Security and Access Control
-
-* **Cryptographic Hashing**
-  Passwords are secured using `bcrypt` to ensure data integrity and cadet privacy.
-
-* **Role-Based Access Control (RBAC)**
-
-  | Tier   | Role          | Permissions                                                |
-  | ------ | ------------- | ---------------------------------------------------------- |
-  | Tier 1 | Admin / Staff | Full system control, database management, global reporting |
-  | Tier 2 | Squad Leader  | Unit-level accountability, dashboard access                |
-  | Tier 3 | Cadet         | Personal profile management and performance tracking       |
+- **Export Capabilities**
+  - CSV export
+  - Excel export
+  - Base64-encoded download support for portability
 
 ---
 
-## Technical Architecture
+### 3. Security & Access Control
 
-| Component        | Specification                          |
-| ---------------- | -------------------------------------- |
-| Frontend         | Flet (Python-based Flutter framework)  |
-| Database         | SQLite3 with Write-Ahead Logging (WAL) |
-| Async Runtime    | Python `asyncio`                       |
-| Reporting Engine | Matplotlib + FPDF2                     |
+- **Password Security**  
+  Uses `bcrypt` hashing for secure credential storage.
 
----
+- **Role-Based Access Control (RBAC)**
 
-## Development Roadmap
-
-* **Expanded Cadet Profiles**
-  Academic majors, branch preferences, and emergency contact integration.
-
-* **Performance Analytics**
-  Longitudinal tracking of APFT / ACFT scores with visual progress dashboards.
-
-* **Asset Management**
-  Support for profile images and digitized cadet records.
-
-* **Authentication Integration**
-  Single Sign-On (SSO) for university-level security compliance.
+| Tier   | Role          | Permissions                                                |
+|--------|--------------|------------------------------------------------------------|
+| Tier 1 | Admin / Staff | Full system control, database management, global reporting |
+| Tier 2 | Squad Leader  | Unit-level accountability, dashboard access                |
+| Tier 3 | Cadet         | Personal profile & performance tracking                    |
 
 ---
 
-## Installation & Deployment
+## System Architecture
+
+| Component        | Technology                              |
+|-----------------|------------------------------------------|
+| Frontend        | Flet (Python-based Flutter framework)    |
+| Backend         | Python (asyncio-driven)                  |
+| Database        | SQLite3 (WAL mode enabled)               |
+| Reporting       | Matplotlib + FPDF2                       |
+| Authentication  | bcrypt                                  |
+
+---
+
+## Deployment (Fly.io)
+
+This application is deployable via **Fly.io**.
+
+### Prerequisites
+
+- Install Fly CLI:
+```bash
+curl -L https://fly.io/install.sh | sh
+```
+
+- Authenticate:
+```bash
+flyctl auth login
+```
+
+### Deploy
+
+```bash
+flyctl deploy --remote-only
+```
+
+### CI/CD (GitHub Actions)
+
+Set a secret:
+- `FLY_API_TOKEN` (generated via `flyctl auth token`)
+
+Example step:
+```yaml
+- name: Deploy to Fly.io
+  run: flyctl deploy --remote-only
+  env:
+    FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+```
+
+---
+
+## Installation (Local Development)
 
 ### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/your-username/the-bull-pen.git
+cd the-bull-pen
 ```
 
 ### 2. Install Dependencies
@@ -93,13 +117,13 @@ git clone https://github.com/your-username/the-bull-pen.git
 pip install flet bcrypt fpdf2 matplotlib
 ```
 
-### 3. Initialize the Database
+### 3. Initialize Database
 
 ```bash
 python seed.py
 ```
 
-### 4. Run the Application
+### 4. Run Application
 
 ```bash
 python main.py
@@ -107,14 +131,27 @@ python main.py
 
 ---
 
-## Lead Developer
+## Roadmap
 
-**Marcus McFadden**
-Duke University
+- Expanded cadet profiles (majors, branch preferences, emergency contacts)
+- ACFT/APFT longitudinal performance tracking
+- Advanced analytics dashboards
+- Profile images & document storage
+- University SSO integration
+- Multi-battalion support
+
+---
+
+## Developer
+
+**Marcus McFadden**  
+Duke University  
 Computer Science & Asian & Middle Eastern Studies
 
 ---
 
 ## Notes
 
-This project is designed for scalability, maintainability, and real-world ROTC operational efficiency. Contributions and feature suggestions are welcome.
+The Bull Pen is designed with scalability, maintainability, and real-world ROTC operational efficiency in mind. The system emphasizes reliability under load, clean UI/UX, and actionable reporting for leadership.
+
+Contributions, feature requests, and feedback are welcome.

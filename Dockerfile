@@ -2,11 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY App/bullpen/requirements.txt ./requirements.txt
+COPY bullpen/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY App/bullpen/ ./bullpen
-COPY App/assets/ ./assets
+COPY bullpen/ ./bullpen
+COPY assets/ ./assets
 
 WORKDIR /app/bullpen
 

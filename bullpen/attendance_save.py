@@ -92,9 +92,13 @@ class AttendancePDF(FPDF):
                     names = [i.get("name", "").split()[-1] for i in level_items if i.get("is_late")]
                 else:
                     names = [i.get("name", "").split()[-1] for i in level_items if i.get("status") == status_filter]
-                if not names:
+
+                count = len(names)
+
+                if count == 0:
                     return "0"
-                return f"{len(names)}: {', '.join(names)}"
+
+                return f"{count}: {', '.join(names)}"
 
             row_values = [
                 f"MS{level}",

@@ -31,6 +31,8 @@ async def main(page: ft.Page):
         "squad": None,
     }
 
+    viewing_cadet_id = None
+
     def past_n_weeks_range(weeks: int) -> tuple:
         now = datetime.datetime.now()
         end_ts = int(now.timestamp())
@@ -312,26 +314,34 @@ async def main(page: ft.Page):
         current_route = "roster"
         asyncio.create_task(show_view(True))
 
-    def go_profile(e=None):
-        nonlocal current_route
+    def go_profile(e=None, cadet_data=None):
+        nonlocal current_route, viewing_cadet_id
 
         page.drawer.open = False
         current_route = "profile"
 
-        user_data = get_user_by_id(current_user["id"])
-
-        if user_data:
-            c_id, c_name, c_ms, c_school, c_squad, c_tier = user_data
-
-            profile_name.value = c_name
-            profile_ms.value = f"MS{c_ms}"
-            profile_squad.value = c_squad
-            profile_school.value = "Duke" if c_school == "D" else "NCCU"
+        if cadet_data:
+            c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet_data
+            viewing_cadet_id = c_id
         else:
-            profile_name.value = "N/A"
-            profile_ms.value = "N/A"
-            profile_squad.value = "N/A"
-            profile_school.value = "N/A"
+            user_data = get_user_by_id(current_user["id"])
+            if not user_data:
+                return
+
+            c_id = user_data["id"]
+            c_name = user_data["name"]
+            c_ms = user_data["ms_level"]
+            c_school = user_data["school"]
+            c_squad = user_data["squad"]
+
+            viewing_cadet_id = c_id
+
+        profile_name.value = c_name
+        profile_ms.value = f"MS{c_ms}"
+        profile_squad.value = c_squad
+        profile_school.value = "Duke" if c_school == "D" else "NCCU"
+
+        edit_profile_btn.visible = (viewing_cadet_id == current_user["id"])
 
         roster_view.visible = False
         task_org_view.visible = False
@@ -423,7 +433,7 @@ async def main(page: ft.Page):
                         title=ft.Text(display_name),
                         subtitle=ft.Text(f"MS{c_ms} | {c_squad} | {tier_names.get(c_tier, 'UNK')}"),
                         trailing=ft.PopupMenuButton(items=menu_items) if menu_items else None,
-                        on_click=lambda e, d=cadet: view_cadet_modal(d)
+                        on_click=lambda e, d=cadet: go_profile(cadet_data=d)
                     )
                 )
             )
@@ -496,6 +506,7 @@ async def main(page: ft.Page):
         flush_task = asyncio.create_task(flush_logic())
 
     async def handle_save_csv(e):
+        nonlocal task_org_dirty
 
         if current_user["tier"] > 1:
             return
@@ -547,10 +558,14 @@ async def main(page: ft.Page):
         except Exception as exc:
             print("Failed to write CSV file:", exc)
 
-        page.launch_url(filename.replace("assets/", ""))
+        await page.launch_url(filename.replace("assets/", ""))
 
         try:
             clear_attendance_for_new_week(clear_events_in_range=(start_ts, end_ts), reset_current=True, backup=True)
+            attendance_registry.clear()
+            task_org_dirty = True
+
+            await show_view(False)
         except Exception as exc:
             print("clear_attendance_for_new_week failed:", exc)
 
@@ -568,6 +583,7 @@ async def main(page: ft.Page):
             pass
 
     async def handle_save(e):
+        nonlocal task_org_dirty
 
         if current_user["tier"] > 1:
             return
@@ -602,8 +618,29 @@ async def main(page: ft.Page):
             with open(filename, "wb") as f:
                 f.write(pdf_bytes)
 
-            page.launch_url(filename.replace("assets/", ""))
-          
+            await page.launch_url(filename.replace("assets/", ""))
+
+            try:
+                start_ts, end_ts = past_n_weeks_range(2)
+
+                clear_attendance_for_new_week(
+                    clear_events_in_range=(start_ts, end_ts),
+                    reset_current=True,
+                    backup=True
+                )
+
+                attendance_registry.clear()
+                task_org_dirty = True
+
+                await show_view(False)
+
+            except Exception as exc:
+                print("clear_attendance_for_new_week failed:", exc)
+
+            try:
+                page.pubsub.send_all("attendance_flushed")
+            except:
+                pass
 
             page.snack_bar = ft.SnackBar(ft.Text("Opening PDF Report..."), bgcolor="green")
             page.snack_bar.open = True
@@ -896,63 +933,6 @@ async def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-    def view_cadet_modal(cadet_data):
-        c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet_data
-
-        school_color = "#012169" if c_school == "D" else "#8B2331"
-
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Cadet Profile"),
-            content=ft.Container(
-                width=500,
-                height=220,
-                padding=20,
-                content=ft.Row([
-                    # LEFT: Profile Pic
-                    ft.Column([
-                        ft.CircleAvatar(
-                            content=ft.Text(c_name[0]),
-                            radius=50,
-                            bgcolor=school_color
-                        ),
-                        ft.Text("PHOTO", size=10)
-                    ], horizontal_alignment="center", width=120),
-
-                    ft.VerticalDivider(width=1, color="white24"),
-
-                    # RIGHT: Info
-                    ft.Column([
-                        ft.Text(c_name, size=20, weight="bold"),
-
-                        ft.Divider(),
-
-                        ft.Row([
-                            ft.Text("MS Level:", weight="bold"),
-                            ft.Text(f"MS{c_ms}")
-                        ]),
-
-                        ft.Row([
-                            ft.Text("Squad:", weight="bold"),
-                            ft.Text(c_squad)
-                        ]),
-
-                        ft.Row([
-                            ft.Text("School:", weight="bold"),
-                            ft.Text("Duke" if c_school == "D" else "NCCU")
-                        ]),
-                    ], spacing=10, expand=True)
-                ])
-            ),
-            actions=[
-                ft.TextButton("Close", on_click=lambda _: [setattr(dialog, "open", False), page.update()])
-            ],
-        )
-
-        page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
-
     def confirm_delete(cadet_id, cadet_name):
 
         target = get_user_by_id(cadet_id)
@@ -1008,6 +988,34 @@ async def main(page: ft.Page):
             filter_anchor.visible = not filter_anchor.visible
         page.update()
 
+    def confirm_export(action_callback):
+
+        def do_confirm(e):
+            dialog.open = False
+            page.update()
+            asyncio.create_task(action_callback(e))
+
+        def cancel(e):
+            dialog.open = False
+            page.update()
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Confirm Export"),
+            content=ft.Text(
+                "Are you sure you would like to save?\n\n"
+                "Current Attendance will be cleared."
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=cancel),
+                ft.TextButton("Confirm", on_click=do_confirm),
+            ],
+        )
+
+        page.overlay.append(dialog)
+        dialog.open = True
+        page.update()
+
     async def build_task_org():
 
         if not current_user["id"]:
@@ -1044,12 +1052,18 @@ async def main(page: ft.Page):
         def create_attendance_cell(cadet_id, cadet_name, cadet_ms, cadet_school, cadet_squad, column_label, current_status, current_late):
 
             async def sync_status(e):
-                if status_dropdown.value is None or late_checkbox.value is None:
-                    return
+                if status_dropdown.value != "P":
+                    late_checkbox.value = False
+
+                late_checkbox.disabled = status_dropdown.value != "P"
+
+                status_val = status_dropdown.value if status_dropdown.value else None
+                late_val = 1 if (late_checkbox.value and status_val == "P") else 0
 
                 async with update_lock:
                     key = (cadet_id, column_label)
-                    pending_updates[key] = (status_dropdown.value, 1 if late_checkbox.value else 0)
+                    pending_updates[key] = (status_val, late_val)
+
                 asyncio.create_task(schedule_flush())
 
             status_dropdown = ft.Dropdown(
@@ -1127,12 +1141,12 @@ async def main(page: ft.Page):
                     ft.PopupMenuItem(
                         content=ft.Text("Export as PDF"),
                         icon=ft.Icons.PICTURE_AS_PDF,
-                        on_click=handle_save
+                        on_click=lambda e: confirm_export(handle_save)
                     ),
                     ft.PopupMenuItem(
                         content=ft.Text("Export as CSV (Excel)"),
                         icon=ft.Icons.TABLE_CHART,
-                        on_click=handle_save_csv
+                        on_click=lambda e: confirm_export(handle_save_csv)
                     ),
                 ],
             )
@@ -1305,6 +1319,12 @@ async def main(page: ft.Page):
             current_user["tier"]
         ))
 
+    edit_profile_btn = ft.Button(
+        "Edit Profile",
+        icon=ft.Icons.EDIT,
+        on_click=open_edit_profile
+    )
+
     profile_view = ft.Container(
         expand=True,
         padding=20,
@@ -1313,11 +1333,7 @@ async def main(page: ft.Page):
             ft.Row([
                 ft.Text("PROFILE", size=30, weight="bold"),
                 ft.Container(expand=True),
-                ft.ElevatedButton(
-                    "Edit Profile",
-                    icon=ft.Icons.EDIT,
-                    on_click=open_edit_profile
-                )
+                edit_profile_btn
             ]),
 
             ft.Divider(),

@@ -1074,7 +1074,7 @@ async def main(page: ft.Page):
                     ft.dropdown.Option("E", "Excused"),
                     ft.dropdown.Option("UN", "Uncontracted"),
                 ],
-                width=120, height=40, dense=True, text_size=11, border_color="white24",
+                width=120, height=33, dense=True, text_size=11, border_color="white24",
             )
 
             late_checkbox = ft.Checkbox(

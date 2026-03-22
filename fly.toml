@@ -6,6 +6,9 @@
 app = 'app-young-dawn-3985'
 primary_region = 'iad'
 
+[build]
+  dockerfile = "App/Dockerfile"
+
 [mounts]
   source = "bullpen_data"
   destination = "/data"

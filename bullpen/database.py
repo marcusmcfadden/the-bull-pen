@@ -66,12 +66,15 @@ def init_db() -> None:
 
         # Current Attendance Snapshot (For UI Performance)
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS attendance_current (
-            cadet_id INTEGER PRIMARY KEY REFERENCES cadets(id) ON DELETE CASCADE,
-            status TEXT,
-            is_late INTEGER,
-            updated_ts INTEGER
-        );
+            CREATE TABLE IF NOT EXISTS attendance_current (
+                cadet_id INTEGER,
+                day TEXT,
+                status TEXT,
+                is_late INTEGER,
+                updated_ts INTEGER,
+                PRIMARY KEY (cadet_id, day),
+                FOREIGN KEY(cadet_id) REFERENCES cadets(id) ON DELETE CASCADE
+            );
         """)
 
         # Export Tracking
@@ -220,20 +223,25 @@ def append_attendance_events(events_list: List[Tuple]):
         for ev in events_list:
             cid, ts, stat, late, src, meta = ev
             meta_json = json.dumps(meta)
-            
+
+            day = meta.get("label")  # <-- IMPORTANT
+
             # 1. Log historical event
             cur.execute("""
                 INSERT INTO attendance_events (cadet_id, event_ts, status, is_late, source, metadata)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (cid, ts, stat, late, src, meta_json))
-            
-            # 2. Update current snapshot
+
+            # 2. Update snapshot (correct syntax)
             cur.execute("""
-                INSERT INTO attendance_current (cadet_id, status, is_late, updated_ts)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(cadet_id) DO UPDATE SET
-                    status=excluded.status, is_late=excluded.is_late, updated_ts=excluded.updated_ts
-            """, (cid, stat, late, ts))
+                INSERT INTO attendance_current (cadet_id, day, status, is_late, updated_ts)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(cadet_id, day) DO UPDATE SET
+                    status=excluded.status,
+                    is_late=excluded.is_late,
+                    updated_ts=excluded.updated_ts
+            """, (cid, day, stat, late, ts))
+
         conn.commit()
     finally:
         conn.close()

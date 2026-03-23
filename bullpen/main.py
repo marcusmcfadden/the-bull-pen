@@ -1209,11 +1209,8 @@ async def main(page: ft.Page):
         conn = _conn()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT cadet_id,
-                json_extract(metadata, '$.label') as day,
-                status,
-                is_late
-            FROM attendance_events
+            SELECT cadet_id, day, status, is_late
+            FROM attendance_current
         """)
         attendance_data = {
             (row[0], row[1]): (row[2], row[3]) 

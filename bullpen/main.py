@@ -418,11 +418,17 @@ async def main(page: ft.Page):
         if msg in ["roster_updated", "attendance_flushed"]:
             page.run_task(update_roster_ui)
 
-            # Mark attendance view as needing refresh
             nonlocal task_org_dirty
             task_org_dirty = True
 
-            page.update()
+            if current_route == "attendance":
+                async def refresh_attendance():
+                    task_org_view.content = await build_task_org()
+                    page.update()
+
+                page.run_task(refresh_attendance)
+            else:
+                page.update()
 
     page.pubsub.subscribe(on_broadcast)
 

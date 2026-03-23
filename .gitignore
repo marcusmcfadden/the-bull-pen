@@ -13,3 +13,4 @@ env/
 *.sqlite3
 *.pdf
 seed.txt
+dev_mode.py

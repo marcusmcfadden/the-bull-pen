@@ -31,21 +31,23 @@ def init_db() -> None:
             ms_level INTEGER,
             school TEXT,
             squad TEXT,
-            tier INTEGER
+            tier INTEGER,
+            email TEXT,
+            phone TEXT
         );
         """)
 
         # Authenticate Users
 
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS auth_users (
-            id INTEGER PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            reset_required INTEGER DEFAULT 1,
-            created_at INTEGER DEFAULT (strftime('%s','now')),
-            FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
-        );
+    CREATE TABLE IF NOT EXISTS auth_users (
+        id INTEGER PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        reset_required INTEGER DEFAULT 1,
+        created_at INTEGER DEFAULT (strftime('%s','now')),
+        FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
+    );
         """)
 
         # Historical Event Log (Timestamped)

@@ -24,6 +24,47 @@ from rbac import (
 
 async def main(page: ft.Page):
 
+    try:
+        import dev_mode
+        DEV_ENABLED = True
+    except ImportError:
+            DEV_ENABLED = False
+
+    dev_buffer = ""
+
+    def on_key(e: ft.KeyboardEvent):
+        nonlocal dev_buffer
+
+        if not DEV_ENABLED:
+            return
+
+        if not e.key:
+            return
+
+        key = e.key.lower()
+
+        if len(key) == 1:
+            dev_buffer += key
+
+            if len(dev_buffer) > len(dev_mode.DEV_SECRET):
+                dev_buffer = dev_buffer[-len(dev_mode.DEV_SECRET):]
+
+            if dev_buffer == dev_mode.DEV_SECRET:
+                dev_mode.activate_dev_mode(
+                    page,
+                    current_user,
+                    build_drawer,
+                    roster_view,
+                    task_org_view,
+                    profile_view,
+                    btn_roster,
+                    btn_task_org,
+                    update_roster_ui,
+                    open_cadet_modal
+                )
+
+    page.on_keyboard_event = on_key
+
     current_user = {
         "id": None,
         "tier": None,
@@ -352,6 +393,12 @@ async def main(page: ft.Page):
         profile_ms.value = f"MS{c_ms}"
         profile_squad.value = c_squad
         profile_school.value = "Duke" if c_school == "D" else "NCCU"
+        if cadet_data:
+            profile_email.value = "N/A"
+            profile_phone.value = "N/A"
+        else:
+            profile_email.value = user_data.get("email", "N/A")
+            profile_phone.value = user_data.get("phone", "N/A")
 
         edit_profile_btn.visible = (viewing_cadet_id == current_user["id"])
 
@@ -391,6 +438,8 @@ async def main(page: ft.Page):
             get_filtered_cadets, 
             query, list(active_schools), list(active_squads), list(active_ms), direction
         )
+
+        total_text.value = f"Total: {len(cadets)} cadets"
         
         roster_list.controls.clear()
 
@@ -665,18 +714,6 @@ async def main(page: ft.Page):
 
     def open_change_password_dialog(force=False):
 
-        new_password = ft.TextField(
-            label="New Password",
-            password=True,
-            can_reveal_password=True
-        )
-
-        confirm_password = ft.TextField(
-            label="Confirm Password",
-            password=True,
-            can_reveal_password=True
-        )
-
         status_text = ft.Text(color="red", size=12)
 
         def handle_change(e):
@@ -696,12 +733,10 @@ async def main(page: ft.Page):
                 page.update()
                 return
 
-            # update password
             from database import update_user_password, _conn
 
             update_user_password(current_user["id"], new_password.value)
 
-            # clear reset flag
             conn = _conn(write=True)
             cur = conn.cursor()
             cur.execute("UPDATE auth_users SET reset_required = 0 WHERE id = ?", (current_user["id"],))
@@ -728,6 +763,20 @@ async def main(page: ft.Page):
 
             page.update()
 
+        new_password = ft.TextField(
+            label="New Password",
+            password=True,
+            can_reveal_password=True,
+            on_submit=handle_change
+        )
+
+        confirm_password = ft.TextField(
+            label="Confirm Password",
+            password=True,
+            can_reveal_password=True,
+            on_submit=handle_change
+        )
+
         dialog = ft.AlertDialog(
             modal=True,
             barrier_color="black54",
@@ -743,7 +792,6 @@ async def main(page: ft.Page):
             ],
         )
 
-        # force = no escape
         if force:
             dialog.actions = [
                 ft.Button("Set Password", on_click=handle_change)
@@ -810,6 +858,12 @@ async def main(page: ft.Page):
 
         first_name = ft.TextField(label="First Name", value=f_name_val, expand=True)
         last_name = ft.TextField(label="Last Name", value=l_name_val, expand=True)
+        email_field = ft.TextField(label="Email", value="", expand=True)
+        phone_field = ft.TextField(label="Phone", value="", expand=True)
+
+        if is_edit:
+            email_field.value = cadet_data[6] if len(cadet_data) > 6 else ""
+            phone_field.value = cadet_data[7] if len(cadet_data) > 7 else ""
         
         school_dropdown = ft.Dropdown(
             label="School",
@@ -860,6 +914,14 @@ async def main(page: ft.Page):
             width=120,
             visible=current_user["tier"] <= 1
         )
+
+        if current_user["tier"] > 1:
+            first_name.disabled = True
+            last_name.disabled = True
+            school_dropdown.disabled = True
+            ms_level.disabled = True
+            squad_dropdown.disabled = True
+            tier_dropdown.disabled = True
 
         def close_dialog(dialog):
             dialog.open = False
@@ -929,7 +991,9 @@ async def main(page: ft.Page):
                         int(ms_level.value),
                         school_dropdown.value,
                         squad_dropdown.value,
-                        new_tier
+                        new_tier,
+                        email_field.value,
+                        phone_field.value
                     )
 
                     # check missing leader
@@ -942,7 +1006,9 @@ async def main(page: ft.Page):
                         int(ms_level.value),
                         school_dropdown.value,
                         squad_dropdown.value,
-                        new_tier
+                        new_tier,
+                        email_field.value,
+                        phone_field.value
                     )
 
                     username = combined_name.lower().replace(" ", "")
@@ -1009,7 +1075,7 @@ async def main(page: ft.Page):
                     barrier_color="black54",
                     title=ft.Text("Cadet Profile"),
                     content=ft.Container(
-                        width=600, height=250,
+                        width=600,
                         content=ft.Row([
                             ft.Column([
                                 ft.CircleAvatar(
@@ -1024,8 +1090,16 @@ async def main(page: ft.Page):
                                 ft.Row([first_name, last_name]),
                                 school_dropdown,
                                 ft.Row([ms_level, squad_dropdown]),
-                                tier_dropdown,
-                            ], expand=True, spacing=15)
+                                ft.Text("Contact Info", weight="bold", color="blue200"),
+                                ft.Row([
+                                    email_field,
+                                    phone_field
+                                ], spacing=10),
+                            ],
+                            expand=True,
+                            spacing=15,
+                            scroll=ft.ScrollMode.AUTO
+                            )
                         ])
                     ),
                     actions=[
@@ -1206,6 +1280,7 @@ async def main(page: ft.Page):
 
         squad_containers = []
         for squad in sorted(squad_groups.keys()):
+            squad_total = len(squad_groups[squad])
             rows = []
             for cadet in squad_groups[squad]:
                 c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet
@@ -1220,7 +1295,11 @@ async def main(page: ft.Page):
             squad_containers.append(
                 ft.Container(
                     content=ft.Column([
-                        ft.Text(squad.upper(), weight="bold", size=16, color="blue200"),
+                        ft.Row([
+                            ft.Text(squad.upper(), weight="bold", size=16, color="blue200"),
+                            ft.Container(expand=True),
+                            ft.Text(f"Total: {squad_total}", size=12, color="grey")
+                        ]),
                         ft.DataTable(
                             column_spacing=15,
                             columns=[ft.DataColumn(ft.Text("NAME"))] + [ft.DataColumn(ft.Text(d)) for d in days],
@@ -1229,7 +1308,9 @@ async def main(page: ft.Page):
                             border_radius=8,
                         )
                     ]),
-                    padding=15, bgcolor=ft.Colors.WHITE10, border_radius=10,
+                    padding=15,
+                    bgcolor=ft.Colors.WHITE10,
+                    border_radius=10,
                 )
             )
 
@@ -1406,13 +1487,16 @@ async def main(page: ft.Page):
     )
 
     # Main Layouts
+    total_text = ft.Text(size=12, color="grey")
+
     roster_main_col = ft.Container(
         content=ft.Column([
             ft.Row([search_field, sort_dir_btn, filter_toggle_btn], spacing=5),
-            roster_list 
-        ], spacing=15),
+            total_text,
+            roster_list
+        ], spacing=10),
         expand=True,
-        padding=15  
+        padding=15
     )
 
     roster_view = ft.Stack([
@@ -1447,6 +1531,8 @@ async def main(page: ft.Page):
     profile_ms = ft.Text()
     profile_squad = ft.Text()
     profile_school = ft.Text()
+    profile_email = ft.Text()
+    profile_phone = ft.Text()
 
     def open_edit_profile(e):
         open_cadet_modal((
@@ -1462,7 +1548,6 @@ async def main(page: ft.Page):
         "Edit Profile",
         icon=ft.Icons.EDIT,
         on_click=open_edit_profile,
-        disabled=True
     )
 
     profile_view = ft.Container(
@@ -1497,6 +1582,8 @@ async def main(page: ft.Page):
                     ft.Row([ft.Text("MS Level:", weight="bold"), profile_ms]),
                     ft.Row([ft.Text("Squad:", weight="bold"), profile_squad]),
                     ft.Row([ft.Text("School:", weight="bold"), profile_school]),
+                    ft.Row([ft.Text("Email:", weight="bold"), profile_email]),
+                    ft.Row([ft.Text("Phone:", weight="bold"), profile_phone]),
 
                     ft.Container(height=10),
                     ft.Button(

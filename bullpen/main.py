@@ -1153,21 +1153,37 @@ async def main(page: ft.Page):
             if current_user["tier"] <= 1 else None
         )
 
-        return ft.Column([
+        return ft.Stack([
+            # Background image
             ft.Container(
-                padding=10,
-                content=ft.Row([
-                    ft.Text("MULTI-DAY ATTENDANCE", size=20, weight="bold"),
-                    export_button or ft.Container()
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                content=ft.Image(
+                    src="bcblogo.png",
+                    fit=ft.BoxFit.CONTAIN,
+                    opacity=0.08,
+                    width=800,
+                    height=800,
+                ),
+                alignment=ft.Alignment.CENTER,
+                expand=True,
             ),
-            ft.Row(
-                controls=squad_containers,
-                scroll=ft.ScrollMode.ALWAYS,
-                vertical_alignment="start",
-                spacing=20
-            )
-        ], expand=True, scroll=ft.ScrollMode.AUTO)
+
+            # Foreground content
+            ft.Column([
+                ft.Container(
+                    padding=10,
+                    content=ft.Row([
+                        ft.Text("MULTI-DAY ATTENDANCE", size=20, weight="bold"),
+                        export_button or ft.Container()
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                ),
+                ft.Row(
+                    controls=squad_containers,
+                    scroll=ft.ScrollMode.ALWAYS,
+                    vertical_alignment="start",
+                    spacing=20
+                )
+            ], expand=True, scroll=ft.ScrollMode.AUTO)
+        ])
 
     # UI Builders
     def build_filters():
@@ -1293,7 +1309,21 @@ async def main(page: ft.Page):
     )
 
     roster_view = ft.Stack([
+        ft.Container(
+            content=ft.Image(
+                src="bcblogo.png",
+                fit=ft.BoxFit.CONTAIN,
+                opacity=0.08,
+                width=800,
+                height=800,
+            ),
+            alignment=ft.Alignment.CENTER,
+            expand=True,
+        ),
+
+        # Main content
         ft.Row([roster_main_col, filter_sidebar], expand=True, spacing=0),
+
         filter_anchor
     ], expand=True)
 

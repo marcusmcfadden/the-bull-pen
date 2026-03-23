@@ -589,7 +589,7 @@ async def main(page: ft.Page):
             cur.execute("""
                 SELECT cadet_id, event_ts, status, is_late, source, metadata, created_at
                 FROM attendance_events
-                WHERE event_ts BETWEEN ? AND ?
+                WHERE event_ts BETWEEN %s AND %s
                 ORDER BY cadet_id, event_ts DESC
             """, (int(start_ts), int(end_ts)))
             rows = cur.fetchall()
@@ -739,7 +739,7 @@ async def main(page: ft.Page):
 
             conn = _conn(write=True)
             cur = conn.cursor()
-            cur.execute("UPDATE auth_users SET reset_required = 0 WHERE id = ?", (current_user["id"],))
+            cur.execute("UPDATE auth_users SET reset_required = 0 WHERE id = %s", (current_user["id"],))
             conn.commit()
             conn.close()
 
@@ -933,7 +933,7 @@ async def main(page: ft.Page):
 
             cur.execute("""
                 SELECT COUNT(*) FROM cadets
-                WHERE squad = ? AND tier = 2
+                WHERE squad = %s AND tier = 2
             """, (squad,))
 
             count = cur.fetchone()[0]
@@ -979,7 +979,7 @@ async def main(page: ft.Page):
                         cur.execute("""
                             UPDATE cadets
                             SET tier = 3
-                            WHERE squad = ? AND tier = 2 AND id != ?
+                            WHERE squad = %s AND tier = 2 AND id != %s
                         """, (squad, cadet_id))
 
                         conn.commit()
@@ -1053,7 +1053,7 @@ async def main(page: ft.Page):
                     barrier_color="black54",
                     title=ft.Text("Confirm Promotion"),
                     content=ft.Text(
-                        "Are you sure you want to promote this cadet to Leader?\n\n"
+                        "Are you sure you want to promote this cadet to Leader%s\n\n"
                         "This action cannot be undone with your authority."
                     ),
                     actions=[
@@ -1128,7 +1128,7 @@ async def main(page: ft.Page):
 
         confirm_dialog = ft.AlertDialog(
             title=ft.Text("Confirm Deletion"),
-            content=ft.Text(f"Are you sure you want to delete {cadet_name}?"),
+            content=ft.Text(f"Are you sure you want to delete {cadet_name}%s"),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda _: [setattr(confirm_dialog, "open", False), page.update()]),
                 ft.Button("Delete", bgcolor=ft.Colors.RED_700, color="white", on_click=finalize_delete),
@@ -1184,7 +1184,7 @@ async def main(page: ft.Page):
             barrier_color="black54",
             title=ft.Text("Confirm Export"),
             content=ft.Text(
-                "Are you sure you would like to save?\n\n"
+                "Are you sure you would like to save%s\n\n"
                 "Current Attendance will be cleared."
             ),
             actions=[

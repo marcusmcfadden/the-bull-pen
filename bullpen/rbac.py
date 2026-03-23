@@ -88,7 +88,7 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
             c.school
             FROM auth_users a
             JOIN cadets c ON a.id = c.id
-            WHERE a.username = ?
+            WHERE a.username = %s
         """, (username,))
 
         row = cur.fetchone()
@@ -150,7 +150,7 @@ def update_user_tier(actor: Dict, target_user_id: int, new_tier: int) -> bool:
         cur.execute("""
             SELECT id, tier, squad
             FROM cadets
-            WHERE id = ?
+            WHERE id = %s
         """, (target_user_id,))
         row = cur.fetchone()
 
@@ -168,8 +168,8 @@ def update_user_tier(actor: Dict, target_user_id: int, new_tier: int) -> bool:
 
         cur.execute("""
             UPDATE cadets
-            SET tier = ?
-            WHERE id = ?
+            SET tier = %s
+            WHERE id = %s
         """, (new_tier, target_user_id))
 
         conn.commit()
@@ -189,7 +189,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
             SELECT c.id, c.name, c.tier, c.squad, c.ms_level, c.school, a.username
             FROM cadets c
             LEFT JOIN auth_users a ON c.id = a.id
-            WHERE c.id = ?
+            WHERE c.id = %s
         """, (user_id,))
         row = cur.fetchone()
 

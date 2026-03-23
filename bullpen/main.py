@@ -565,8 +565,6 @@ async def main(page: ft.Page):
 
         flush_task = asyncio.create_task(flush_logic())
 
-    page.run_task(poll_updates)
-
     async def handle_save_csv(e):
         nonlocal task_org_dirty
 

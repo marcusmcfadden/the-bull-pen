@@ -10,7 +10,7 @@ tier_leader = 2
 tier_cadet = 3
 
 tier_names = {
-    tier_admin: "SUPERADMIN",
+    tier_superadmin: "SUPERADMIN",
     tier_admin: "ADMIN",
     tier_leader: "SQUAD LEADER",
     tier_cadet: "CADET",
@@ -76,14 +76,16 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT 
-                a.id,
-                a.password_hash,
-                c.name,
-                c.tier,
-                c.squad,
-                c.ms_level,
-                c.school
+        SELECT 
+            a.id,
+            a.username,
+            a.password_hash,
+            a.reset_required,
+            c.name,
+            c.tier,
+            c.squad,
+            c.ms_level,
+            c.school
             FROM auth_users a
             JOIN cadets c ON a.id = c.id
             WHERE a.username = ?
@@ -93,19 +95,21 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
         if not row:
             return None
 
-        user_id, stored_hash, name, tier, squad, ms_level, school = row
+        user_id, username, stored_hash, reset_required, name, tier, squad, ms_level, school = row
 
         if not bcrypt.checkpw(password.encode(), stored_hash.encode()):
             return None
 
         return {
             "id": user_id,
+            "username": username,
             "name": name,
             "tier": tier,
             "tier_name": tier_name(tier),
             "squad": squad,
             "ms_level": ms_level,
             "school": school,
+            "reset_required": reset_required,
         }
 
     finally:
@@ -182,9 +186,10 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, name, tier, squad, ms_level, school
-            FROM cadets
-            WHERE id = ?
+            SELECT c.id, c.name, c.tier, c.squad, c.ms_level, c.school, a.username
+            FROM cadets c
+            LEFT JOIN auth_users a ON c.id = a.id
+            WHERE c.id = ?
         """, (user_id,))
         row = cur.fetchone()
 
@@ -199,6 +204,7 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
             "squad": row[3],
             "ms_level": row[4],
             "school": row[5],
+            "username": row[6],
         }
 
     finally:

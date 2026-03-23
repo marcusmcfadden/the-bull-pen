@@ -42,6 +42,7 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            reset_required INTEGER DEFAULT 1,
             created_at INTEGER DEFAULT (strftime('%s','now')),
             FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
         );
@@ -86,20 +87,39 @@ def init_db() -> None:
     finally:
         conn.close()
 
-# Authentication Logic
-
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+def update_user_password(user_id: int, new_password: str):
+    conn = _conn(write=True)
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE auth_users
+            SET password_hash = ?
+            WHERE id = ?
+        """, (hash_password(new_password), user_id))
+
+        conn.commit()
+    finally:
+        conn.close()
+
+# Authentication Logic
 
 def create_auth_user(cadet_id: int, username: str, password: str):
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
-        hashed = hash_password(password)
+
         cur.execute("""
             INSERT INTO auth_users (id, username, password_hash)
             VALUES (?, ?, ?)
-        """, (cadet_id, username, hashed))
+        """, (cadet_id, username, hash_password(password)))
+
         conn.commit()
     finally:
         conn.close()
@@ -108,18 +128,22 @@ def login_user(username: str, password: str):
     conn = _conn()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT id, password_hash FROM auth_users WHERE username = ?
-        """, (username,))
-        row = cur.fetchone()
 
+        cur.execute("""
+            SELECT id, password_hash
+            FROM auth_users
+            WHERE username = ?
+        """, (username,))
+
+        row = cur.fetchone()
         if not row:
             return None
 
         cadet_id, stored_hash = row
 
-        if bcrypt.checkpw(password.encode(), stored_hash.encode()):
-            return cadet_id  # 👈 THIS is what your app uses
+        if verify_password(password, stored_hash):
+            return cadet_id
+
         return None
     finally:
         conn.close()

@@ -96,6 +96,12 @@ async def main(page: ft.Page):
 
             if user:
                 current_user.update(user)
+
+                if user.get("reset_required"):
+                    page.controls.clear()
+                    open_change_password_dialog(force=True)
+                    return
+
                 page.controls.clear()
 
                 page.drawer = build_drawer()
@@ -323,6 +329,7 @@ async def main(page: ft.Page):
         if cadet_data:
             c_id, c_name, c_ms, c_school, c_squad, c_tier = cadet_data
             viewing_cadet_id = c_id
+            profile_username.value = "N/A"
         else:
             user_data = get_user_by_id(current_user["id"])
             if not user_data:
@@ -336,7 +343,12 @@ async def main(page: ft.Page):
 
             viewing_cadet_id = c_id
 
-        profile_name.value = c_name
+            profile_username.value = user_data.get("username", "N/A")
+
+        name_parts = c_name.split(" ", 1)
+
+        profile_first_name.value = name_parts[0]
+        profile_last_name.value = name_parts[1] if len(name_parts) > 1 else ""
         profile_ms.value = f"MS{c_ms}"
         profile_squad.value = c_squad
         profile_school.value = "Duke" if c_school == "D" else "NCCU"
@@ -651,6 +663,96 @@ async def main(page: ft.Page):
         else:
             page.update()
 
+    def open_change_password_dialog(force=False):
+
+        new_password = ft.TextField(
+            label="New Password",
+            password=True,
+            can_reveal_password=True
+        )
+
+        confirm_password = ft.TextField(
+            label="Confirm Password",
+            password=True,
+            can_reveal_password=True
+        )
+
+        status_text = ft.Text(color="red", size=12)
+
+        def handle_change(e):
+
+            if not new_password.value or not confirm_password.value:
+                status_text.value = "All fields required"
+                page.update()
+                return
+
+            if new_password.value != confirm_password.value:
+                status_text.value = "Passwords do not match"
+                page.update()
+                return
+
+            if len(new_password.value) < 4:
+                status_text.value = "Password too short"
+                page.update()
+                return
+
+            # update password
+            from database import update_user_password, _conn
+
+            update_user_password(current_user["id"], new_password.value)
+
+            # clear reset flag
+            conn = _conn(write=True)
+            cur = conn.cursor()
+            cur.execute("UPDATE auth_users SET reset_required = 0 WHERE id = ?", (current_user["id"],))
+            conn.commit()
+            conn.close()
+
+            dialog.open = False
+
+            page.snack_bar = ft.SnackBar(
+                ft.Text("Password updated successfully"),
+                bgcolor="green"
+            )
+            page.snack_bar.open = True
+
+            if not force:
+                profile_view.visible = True
+                page.update()
+
+            if force:
+                page.controls.clear()
+                page.add(build_login_view())
+                page.update()
+                return
+
+            page.update()
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            barrier_color="black54",
+            title=ft.Text("Reset Password" if force else "Change Password"),
+            content=ft.Column([
+                new_password,
+                confirm_password,
+                status_text
+            ], tight=True),
+            actions=[] if force else [
+                ft.TextButton("Cancel", on_click=lambda e: setattr(dialog, "open", False)),
+                ft.Button("Save", on_click=handle_change)
+            ],
+        )
+
+        # force = no escape
+        if force:
+            dialog.actions = [
+                ft.Button("Set Password", on_click=handle_change)
+            ]
+
+        page.overlay.append(dialog)
+        dialog.open = True
+        page.update()
+
     # Logic Functions
     def update_roster(e=None):
         query = search_field.value if search_field.value else ""
@@ -782,6 +884,7 @@ async def main(page: ft.Page):
 
             dialog = ft.AlertDialog(
                 modal=True,
+                barrier_color="black54",
                 title=ft.Text("Warning"),
                 content=ft.Text(f"{squad} currently has no squad leader"),
                 actions=[
@@ -855,6 +958,7 @@ async def main(page: ft.Page):
 
                 dialog_block = ft.AlertDialog(
                     modal=True,
+                    barrier_color="black54",
                     title=ft.Text("Access Denied"),
                     content=ft.Text("You cannot assign Admin or Superadmin roles"),
                     actions=[
@@ -880,6 +984,7 @@ async def main(page: ft.Page):
 
                 dialog_confirm = ft.AlertDialog(
                     modal=True,
+                    barrier_color="black54",
                     title=ft.Text("Confirm Promotion"),
                     content=ft.Text(
                         "Are you sure you want to promote this cadet to Leader?\n\n"
@@ -901,6 +1006,7 @@ async def main(page: ft.Page):
         # Build the UI Structure
         dialog = ft.AlertDialog(
                     modal=True,
+                    barrier_color="black54",
                     title=ft.Text("Cadet Profile"),
                     content=ft.Container(
                         width=600, height=250,
@@ -1001,6 +1107,7 @@ async def main(page: ft.Page):
 
         dialog = ft.AlertDialog(
             modal=True,
+            barrier_color="black54",
             title=ft.Text("Confirm Export"),
             content=ft.Text(
                 "Are you sure you would like to save?\n\n"
@@ -1334,7 +1441,9 @@ async def main(page: ft.Page):
         padding=10
     )
 
-    profile_name = ft.Text(size=20, weight="bold")
+    profile_first_name = ft.Text(size=20, weight="bold")
+    profile_last_name = ft.Text(size=20, weight="bold")
+    profile_username = ft.Text()
     profile_ms = ft.Text()
     profile_squad = ft.Text()
     profile_school = ft.Text()
@@ -1352,7 +1461,8 @@ async def main(page: ft.Page):
     edit_profile_btn = ft.Button(
         "Edit Profile",
         icon=ft.Icons.EDIT,
-        on_click=open_edit_profile
+        on_click=open_edit_profile,
+        disabled=True
     )
 
     profile_view = ft.Container(
@@ -1381,10 +1491,19 @@ async def main(page: ft.Page):
                 ft.VerticalDivider(width=1),
 
                 ft.Column([
-                    ft.Row([ft.Text("Name:", weight="bold"), profile_name]),
+                    ft.Row([ft.Text("First Name:", weight="bold"), profile_first_name]),
+                    ft.Row([ft.Text("Last Name:", weight="bold"), profile_last_name]),
+                    ft.Row([ft.Text("Username:", weight="bold"), profile_username]),
                     ft.Row([ft.Text("MS Level:", weight="bold"), profile_ms]),
                     ft.Row([ft.Text("Squad:", weight="bold"), profile_squad]),
                     ft.Row([ft.Text("School:", weight="bold"), profile_school]),
+
+                    ft.Container(height=10),
+                    ft.Button(
+                        "Change Password",
+                        icon=ft.Icons.LOCK,
+                        on_click=lambda e: open_change_password_dialog()
+                    ),
                 ], spacing=15, expand=True)
             ], expand=True)
         ])
@@ -1441,6 +1560,7 @@ async def main(page: ft.Page):
 
             dialog = ft.AlertDialog(
                 modal=True,
+                barrier_color="black54",
                 title=ft.Text("Access Denied"),
                 content=ft.Text("You don't have permission to access this section"),
                 actions=[

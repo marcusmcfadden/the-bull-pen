@@ -5,12 +5,9 @@ def reset_tables():
     conn = _conn(write=True)
     cursor = conn.cursor()
 
-    cursor.execute("DELETE FROM cadets")
-    cursor.execute("DELETE FROM attendance_current")
-    cursor.execute("DELETE FROM auth_users")
-
-    cursor.execute("DELETE FROM sqlite_sequence WHERE name='cadets'")
-    cursor.execute("DELETE FROM sqlite_sequence WHERE name='auth_users'")
+    cursor.execute("TRUNCATE cadets RESTART IDENTITY CASCADE")
+    cursor.execute("TRUNCATE auth_users RESTART IDENTITY CASCADE")
+    cursor.execute("TRUNCATE attendance_current CASCADE")
 
     conn.commit()
     conn.close()
@@ -21,7 +18,7 @@ def generate_unique_username(base_username, cursor):
 
     while True:
         cursor.execute(
-            "SELECT 1 FROM auth_users WHERE username = ?",
+            "SELECT 1 FROM auth_users WHERE username = %s",
             (username,)
         )
         if not cursor.fetchone():

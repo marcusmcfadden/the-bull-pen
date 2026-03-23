@@ -1,9 +1,10 @@
 # database.py
 import os
-import sqlite3
 import json
 import bcrypt
+import psycopg2
 from typing import List, Tuple
+
 
 DB_PATH = os.environ.get("BULLPEN_DB")
 
@@ -12,21 +13,18 @@ if not DB_PATH:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     DB_PATH = os.path.join(BASE_DIR, "bullpen.db")
 
-def _conn(write: bool = False) -> sqlite3.Connection:
-    if write:
-        return sqlite3.connect(DB_PATH, check_same_thread=False)
-    return sqlite3.connect(DB_PATH)
+def _conn(write: bool = False):
+    return psycopg2.connect(DB_PATH)
 
 def init_db() -> None:
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
-        cur.execute("PRAGMA journal_mode = WAL;")
         
         # Cadets Table
         cur.execute("""
         CREATE TABLE IF NOT EXISTS cadets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             ms_level INTEGER,
             school TEXT,
@@ -45,7 +43,7 @@ def init_db() -> None:
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         reset_required INTEGER DEFAULT 1,
-        created_at INTEGER DEFAULT (strftime('%s','now')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
     );
         """)
@@ -53,14 +51,14 @@ def init_db() -> None:
         # Historical Event Log (Timestamped)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS attendance_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             cadet_id INTEGER NOT NULL REFERENCES cadets(id) ON DELETE CASCADE,
             event_ts INTEGER NOT NULL,
             status TEXT NOT NULL,
             is_late INTEGER NOT NULL DEFAULT 0,
             source TEXT,
             metadata TEXT,
-            created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
 
@@ -80,11 +78,11 @@ def init_db() -> None:
         # Export Tracking
         cur.execute("""
         CREATE TABLE IF NOT EXISTS attendance_exports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             label TEXT,
             start_ts INTEGER,
             end_ts INTEGER,
-            exported_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            exported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
 
@@ -105,8 +103,8 @@ def update_user_password(user_id: int, new_password: str):
 
         cur.execute("""
             UPDATE auth_users
-            SET password_hash = ?
-            WHERE id = ?
+            SET password_hash = %s
+            WHERE id = %s
         """, (hash_password(new_password), user_id))
 
         conn.commit()
@@ -122,7 +120,7 @@ def create_auth_user(cadet_id: int, username: str, password: str):
 
         cur.execute("""
             INSERT INTO auth_users (id, username, password_hash)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
         """, (cadet_id, username, hash_password(password)))
 
         conn.commit()
@@ -137,7 +135,7 @@ def login_user(username: str, password: str):
         cur.execute("""
             SELECT id, password_hash
             FROM auth_users
-            WHERE username = ?
+            WHERE username = %s
         """, (username,))
 
         row = cur.fetchone()
@@ -161,10 +159,13 @@ def register_cadet(name: str, ms_level: int, school: str, squad: str, tier: int)
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO cadets (name, ms_level, school, squad, tier)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
         """, (name, ms_level, school, squad, tier))
+
+        cadet_id = cur.fetchone()[0]
         conn.commit()
-        return cur.lastrowid
+        return cadet_id
     finally:
         conn.close()
 
@@ -173,8 +174,8 @@ def update_cadet(cadet_id: int, name: str, ms_level: int, school: str, squad: st
     try:
         cur = conn.cursor()
         cur.execute("""
-            UPDATE cadets SET name=?, ms_level=?, school=?, squad=?, tier=?
-            WHERE id=?
+            UPDATE cadets SET name=%s, ms_level=%s, school=%s, squad=%s, tier=%s
+            WHERE id=%s
         """, (name, ms_level, school, squad, tier, cadet_id))
         conn.commit()
     finally:
@@ -184,7 +185,7 @@ def delete_cadet(cadet_id: int):
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM cadets WHERE id = ?", (cadet_id,))
+        cur.execute("DELETE FROM cadets WHERE id = %s", (cadet_id,))
         conn.commit()
     finally:
         conn.close()
@@ -195,16 +196,16 @@ def get_filtered_cadets(query: str = "", schools=None, squads=None, ms_levels=No
         cur = conn.cursor()
         clauses, params = [], []
         if query:
-            clauses.append("LOWER(name) LIKE ?")
+            clauses.append("LOWER(name) LIKE %s")
             params.append(f"%{query.lower()}%")
         if schools:
-            clauses.append(f"school IN ({','.join('?'*len(schools))})")
+            clauses.append(f"school IN ({','.join('%s'*len(schools))})")
             params.extend(schools)
         if squads:
-            clauses.append(f"squad IN ({','.join('?'*len(squads))})")
+            clauses.append(f"squad IN ({','.join('%s'*len(squads))})")
             params.extend(squads)
         if ms_levels:
-            clauses.append(f"ms_level IN ({','.join('?'*len(ms_levels))})")
+            clauses.append(f"ms_level IN ({','.join('%s'*len(ms_levels))})")
             params.extend(ms_levels)
         
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
@@ -229,13 +230,13 @@ def append_attendance_events(events_list: List[Tuple]):
             # 1. Log historical event
             cur.execute("""
                 INSERT INTO attendance_events (cadet_id, event_ts, status, is_late, source, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (cid, ts, stat, late, src, meta_json))
 
             # 2. Update snapshot (correct syntax)
             cur.execute("""
                 INSERT INTO attendance_current (cadet_id, day, status, is_late, updated_ts)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT(cadet_id, day) DO UPDATE SET
                     status=excluded.status,
                     is_late=excluded.is_late,
@@ -250,8 +251,13 @@ def create_attendance_export(label: str, start_ts: int, end_ts: int, backup: boo
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO attendance_exports (label, start_ts, end_ts) VALUES (?, ?, ?)", (label, start_ts, end_ts))
-        export_id = cur.lastrowid
+        cur.execute("""
+            INSERT INTO attendance_exports (label, start_ts, end_ts)
+            VALUES (%s, %s, %s)
+            RETURNING id
+        """, (label, start_ts, end_ts))
+
+        export_id = cur.fetchone()[0]
         conn.commit()
         return export_id
     finally:
@@ -262,7 +268,7 @@ def clear_attendance_for_new_week(clear_events_in_range=None, reset_current=True
     try:
         cur = conn.cursor()
         if clear_events_in_range:
-            cur.execute("DELETE FROM attendance_events WHERE event_ts BETWEEN ? AND ?", clear_events_in_range)
+            cur.execute("DELETE FROM attendance_events WHERE event_ts BETWEEN %s AND %s", clear_events_in_range)
         if reset_current:
             cur.execute("UPDATE attendance_current SET status = NULL, is_late = 0, updated_ts = NULL")
         conn.commit()

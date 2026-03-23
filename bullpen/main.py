@@ -1209,6 +1209,9 @@ async def main(page: ft.Page):
 
         attendance_registry.clear()
         cadets = await asyncio.to_thread(get_filtered_cadets, "", [], [], [], "ASC")
+
+        if current_user["tier"] == 2:
+            cadets = [c for c in cadets if c[4] == current_user["squad"]]
         
         from database import _conn
         conn = _conn()

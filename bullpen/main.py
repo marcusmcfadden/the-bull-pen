@@ -545,26 +545,36 @@ async def main(page: ft.Page):
     async def schedule_flush():
         nonlocal flush_task
         if flush_task and not flush_task.done():
-            flush_task.cancel()
+            return
 
         async def flush_logic():
             nonlocal flush_task
             try:
-                await asyncio.sleep(0.8)
-                if pending_updates:
-                    updates = list(pending_updates.items())
-                    pending_updates.clear()
-                    await batch_update_attendance_async(updates)
-                    try:
-                        page.pubsub.send_all("attendance_flushed")
-                    except:
-                        pass
-            except asyncio.CancelledError:
-                return
+                async with update_lock:
+                    if pending_updates:
+                        updates = list(pending_updates.items())
+                        pending_updates.clear()
+                        await batch_update_attendance_async(updates)
+
+                        try:
+                            page.pubsub.send_all("attendance_flushed")
+                        except:
+                            pass
             finally:
                 flush_task = None
 
         flush_task = asyncio.create_task(flush_logic())
+
+    async def poll_updates():
+        while True:
+            await asyncio.sleep(2)
+            if current_user["id"]:
+                await update_roster_ui()
+
+                if current_route == "attendance":
+                    task_org_view.content = await build_task_org()
+
+    page.run_task(poll_updates)
 
     async def handle_save_csv(e):
         nonlocal task_org_dirty

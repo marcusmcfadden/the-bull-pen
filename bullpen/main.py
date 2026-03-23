@@ -565,15 +565,6 @@ async def main(page: ft.Page):
 
         flush_task = asyncio.create_task(flush_logic())
 
-    async def poll_updates():
-        while True:
-            await asyncio.sleep(2)
-            if current_user["id"]:
-                await update_roster_ui()
-
-                if current_route == "attendance":
-                    task_org_view.content = await build_task_org()
-
     page.run_task(poll_updates)
 
     async def handle_save_csv(e):

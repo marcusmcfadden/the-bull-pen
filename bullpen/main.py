@@ -136,15 +136,19 @@ async def main(page: ft.Page):
     task_org_dirty = True
 
     version = "v1.0.0-beta"
-    version_label = ft.Container(
-        content=ft.Text(
-            version,
-            size=10,
-            color="grey",
-            weight="bold"
+    version_label = ft.TransparentPointer(
+        content=ft.Container(
+            content=ft.Text(
+                version,
+                size=10,
+                color="white70",
+                weight="bold"
+            ),
+            top=10,
+            right=10
         ),
         alignment=ft.Alignment.TOP_RIGHT,
-        padding=ft.Padding.only(top=10, right=10),
+        padding=ft.Padding.only(top=10, right=10)
     )
 
     def build_login_view():

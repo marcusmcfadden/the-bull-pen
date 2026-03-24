@@ -1804,6 +1804,8 @@ async def main(page: ft.Page):
 
         page.update()
 
+        log_list.scroll_to(offset=-1)
+
     # Bottom Nav
     rect_style = ft.ButtonStyle(
         shape=ft.RoundedRectangleBorder(radius=0),

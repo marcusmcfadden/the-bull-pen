@@ -57,7 +57,7 @@ def get_logs(limit=50):
         cur.execute("""
             SELECT timestamp, actor_id, actor_role, action, status, target_id
             FROM audit_logs
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             LIMIT %s
         """, (limit,))
 

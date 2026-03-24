@@ -430,17 +430,16 @@ async def main(page: ft.Page):
             c_squad = user_data["squad"]
 
             viewing_cadet_id = c_id
-
-            present, absent, excused, late = get_cadet_stats(viewing_cadet_id)
-
             profile_username.value = user_data.get("username", "N/A")
-
-        name_parts = c_name.split(" ", 1)
+        
+        present, absent, excused, late = get_cadet_stats(viewing_cadet_id)
 
         profile_present.value = str(present)
         profile_absent.value = str(absent)
         profile_excused.value = str(excused)
         profile_late.value = str(late)
+
+        name_parts = c_name.split(" ", 1)
 
         profile_first_name.value = name_parts[0]
         profile_last_name.value = name_parts[1] if len(name_parts) > 1 else ""

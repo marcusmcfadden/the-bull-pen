@@ -2,6 +2,7 @@ import flet as ft
 import os
 import asyncio
 import time, datetime
+import base64
 from database import (
     init_db,
     upsert_attendance_current,
@@ -547,7 +548,7 @@ async def main(page: ft.Page):
             return
 
         if not attendance_registry:
-            return
+            return b""
 
         log_event(
             actor_id=current_user["id"],
@@ -558,21 +559,29 @@ async def main(page: ft.Page):
         )
 
         try:
-            csv_bytes = await attendance_save.generate_csv(attendance_registry, page)
+            csv_bytes = await attendance_save.generate_csv(attendance_registry)
 
-            ts = int(time.time())
-            os.makedirs("assets/reports", exist_ok=True)
-            filename = f"assets/reports/attendance_export_{ts}.csv"
+            b64 = base64.b64encode(csv_bytes).decode()
 
-            with open(filename, "wb") as f:
-                f.write(csv_bytes)
-
-            await page.launch_url(filename.replace("assets/", ""))
+            await page.launch_url(f"data:text/csv;base64,{b64}")
 
             page.snack_bar = ft.SnackBar(
                 ft.Text("CSV Export Ready"),
                 open=True
             )
+
+            start_ts, end_ts = past_n_weeks_range(2)
+
+            clear_attendance_for_new_week(
+                clear_events_in_range=(start_ts, end_ts),
+                reset_current=True,
+                backup=True
+            )
+
+            attendance_registry.clear()
+            task_org_dirty = True
+
+            await show_view(False)
 
         except Exception as exc:
             print("CSV export failed:", exc)
@@ -591,7 +600,8 @@ async def main(page: ft.Page):
             location="export_pdf"
         )
 
-        if not attendance_registry: return
+        if not attendance_registry: 
+            return
         try:
             day_order = {"TUE PT": 0, "WED PT": 1, "THU PT": 2, "LAB": 3}
             target_days = list(set(item["col"] for item in attendance_registry))
@@ -613,15 +623,9 @@ async def main(page: ft.Page):
                 pdf_gen.generate_combined_report(day, day_data)
 
             pdf_bytes = bytes(pdf_gen.output())
-        
-            os.makedirs("assets/reports", exist_ok=True)
 
-            filename = f"assets/reports/attendance_report_{int(time.time())}.pdf"
-
-            with open(filename, "wb") as f:
-                f.write(pdf_bytes)
-
-            await page.launch_url(filename.replace("assets/", ""))
+            b64 = base64.b64encode(pdf_bytes).decode()
+            await page.launch_url(f"data:application/pdf;base64,{b64}")
 
             try:
                 start_ts, end_ts = past_n_weeks_range(2)
@@ -637,11 +641,16 @@ async def main(page: ft.Page):
 
                 await show_view(False)
 
+                try:
+                    page.pubsub.send_all("attendance_updated")
+                except:
+                    pass
+
             except Exception as exc:
                 print("clear_attendance_for_new_week failed:", exc)
 
             try:
-                page.pubsub.send_all("attendance_flushed")
+                page.pubsub.send_all("attendance_updated")
             except:
                 pass
 
@@ -1032,7 +1041,7 @@ async def main(page: ft.Page):
                     barrier_color="black54",
                     title=ft.Text("Confirm Promotion"),
                     content=ft.Text(
-                        "Are you sure you want to promote this cadet to Leader%s\n\n"
+                        "Are you sure you want to promote this cadet to Leader\n\n"
                         "This action cannot be undone with your authority."
                     ),
                     actions=[
@@ -1181,7 +1190,7 @@ async def main(page: ft.Page):
             barrier_color="black54",
             title=ft.Text("Confirm Export"),
             content=ft.Text(
-                "Are you sure you would like to save%s\n\n"
+                "Are you sure you would like to save\n\n"
                 "Current Attendance will be cleared."
             ),
             actions=[
@@ -1722,7 +1731,7 @@ async def main(page: ft.Page):
 
         page.update()
 
-        log_list.scroll_to(offset=-1)
+        await log_list.scroll_to(offset=-1)
 
     # Bottom Nav
     rect_style = ft.ButtonStyle(

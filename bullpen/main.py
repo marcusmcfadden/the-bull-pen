@@ -4,8 +4,10 @@ import asyncio
 import datetime
 import base64
 import json
+import time
 from database import (
     init_db,
+    append_attendance_events,
     upsert_attendance_current,
     get_filtered_cadets,
     update_cadet,
@@ -13,6 +15,7 @@ from database import (
     create_auth_user,
     delete_cadet,
     clear_attendance_for_new_week,
+    wipe_all_attendance,
     _conn
 )
 import attendance_save
@@ -172,10 +175,21 @@ async def main(page: ft.Page):
                 )
 
                 if current_user["tier"] <= 1:
-                    page.floating_action_button = ft.FloatingActionButton(
-                        icon=ft.Icons.ADD,
-                        bgcolor="#012169",
-                        on_click=lambda _: open_cadet_modal()
+                    page.floating_action_button = ft.Column(
+                        [
+                            ft.FloatingActionButton(
+                                icon=ft.Icons.ADD,
+                                bgcolor="#012169",
+                                on_click=lambda _: open_cadet_modal()
+                            ),
+                            ft.FloatingActionButton(
+                                content=ft.Text("WIPE"),
+                                bgcolor="#8B0000",
+                                on_click=lambda e: confirm_wipe()
+                            )
+                        ],
+                        tight=True,
+                        spacing=10
                     )
                 else:
                     page.floating_action_button = None
@@ -650,11 +664,26 @@ async def main(page: ft.Page):
                         late_val = getattr(item["late"], "value", False)
 
                         day_data.append({
+                            "cadet_id": item["cadet_id"],
                             "name": item["name"],
                             "ms": item["ms"],
                             "status": status_val if status_val else "N/A",
                             "is_late": bool(late_val)
                         })
+
+                events = []
+
+                for item in day_data:
+                    events.append((
+                        item.get("cadet_id"),
+                        int(time.time()),
+                        item.get("status"),
+                        1 if item.get("is_late") else 0,
+                        "export",
+                        {"label": day}
+                    ))
+
+                append_attendance_events(events)
 
                 pdf_gen.generate_combined_report(day, day_data)
 
@@ -1265,6 +1294,39 @@ async def main(page: ft.Page):
         dialog.open = True
         page.update()
 
+    def confirm_wipe():
+
+        def do_wipe(e):
+            wipe_all_attendance()
+            dialog.open = False
+
+            page.snack_bar = ft.SnackBar(
+                ft.Text("ALL attendance data wiped"),
+                bgcolor="red"
+            )
+            page.snack_bar.open = True
+
+            page.update()
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            barrier_color="black54",
+            title=ft.Text("⚠️ CONFIRM DATA WIPE"),
+            content=ft.Text(
+                "This will permanently delete ALL attendance history.\n\n"
+                "This action CANNOT be undone.\n\n"
+                "Use only for semester reset."
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: setattr(dialog, "open", False)),
+                ft.Button("WIPE DATA", bgcolor="red", color="white", on_click=do_wipe)
+            ],
+        )
+
+        page.overlay.append(dialog)
+        dialog.open = True
+        page.update()
+
     async def build_task_org():
 
         if not current_user["id"]:
@@ -1316,6 +1378,7 @@ async def main(page: ft.Page):
                         status_val,
                         late_val
                     )
+                    
                 except Exception as e:
                     import traceback
                     traceback.print_exc()

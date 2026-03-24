@@ -32,14 +32,14 @@ def init_db() -> None:
         # Authenticate Users
 
         cur.execute("""
-    CREATE TABLE IF NOT EXISTS auth_users (
-        id INTEGER PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        reset_required INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
-    );
+        CREATE TABLE IF NOT EXISTS auth_users (
+            id INTEGER PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            reset_required INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(id) REFERENCES cadets(id) ON DELETE CASCADE
+        );
         """)
 
         # Historical Event Log (Timestamped)
@@ -66,6 +66,20 @@ def init_db() -> None:
                 updated_ts INTEGER,
                 PRIMARY KEY (cadet_id, day),
                 FOREIGN KEY(cadet_id) REFERENCES cadets(id) ON DELETE CASCADE
+            );
+        """)
+
+        # Long-term Attendance Stats
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS cadet_attendance_stats (
+                cadet_id INTEGER PRIMARY KEY REFERENCES cadets(id) ON DELETE CASCADE,
+
+                present_count INTEGER DEFAULT 0,
+                absent_count INTEGER DEFAULT 0,
+                excused_count INTEGER DEFAULT 0,
+                late_count INTEGER DEFAULT 0,
+
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
@@ -304,13 +318,22 @@ def clear_attendance_for_new_week(clear_events_in_range=None, reset_current=True
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
-        if clear_events_in_range:
-            cur.execute("DELETE FROM attendance_events WHERE event_ts BETWEEN %s AND %s", clear_events_in_range)
         if reset_current:
-            cur.execute("UPDATE attendance_current SET status = NULL, is_late = 0, updated_ts = NULL")
+            cur.execute("""UPDATE attendance_current
+            SET status = NULL, is_late = 0, updated_ts = NULL""")
         conn.commit()
     finally:
         conn.close()
+
+def wipe_all_attendance():
+    conn = _conn(write=True)
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM attendance_events")
+    cur.execute("UPDATE attendance_current SET status = NULL, is_late = 0, updated_ts = NULL")
+
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     print("Creating database...")

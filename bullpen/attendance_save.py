@@ -1,7 +1,6 @@
 import os
 import io
 import csv
-import base64
 from fpdf import FPDF
 import matplotlib.pyplot as plt
 
@@ -9,7 +8,8 @@ class AttendancePDF(FPDF):
     def __init__(self):
         super().__init__(orientation='L', unit='mm', format='A4')
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.logo_path = os.path.join(self.base_dir, "assets", "bcblogo.png")
+        self.logo_path = os.path.join(self.base_dir, "..", "assets", "bcblogo.png")
+        self.logo_path = os.path.abspath(self.logo_path)
         self.reports_dir = os.path.join(self.base_dir, "reports")
         os.makedirs(self.reports_dir, exist_ok=True)
         self.names_col_idx = 3

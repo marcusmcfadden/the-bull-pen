@@ -144,11 +144,9 @@ async def main(page: ft.Page):
                 color="white70",
                 weight="bold"
             ),
-            top=10,
-            right=10
+            alignment=ft.Alignment.TOP_RIGHT,
+            padding=ft.Padding.only(top=10, right=10)
         ),
-        alignment=ft.Alignment.TOP_RIGHT,
-        padding=ft.Padding.only(top=10, right=10)
     )
 
     def build_login_view():

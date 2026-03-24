@@ -586,45 +586,63 @@ async def main(page: ft.Page):
             await show_view(False)
 
         except Exception as exc:
-            print("CSV export failed:", exc)
+            import traceback
+            traceback.print_exc()
+
+            page.snack_bar = ft.SnackBar(
+                ft.Text(f"PDF export failed: {str(exc)}"),
+                bgcolor="red"
+            )
+            page.snack_bar.open = True
+
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="EXPORT_PDF",
+                status="FAILED",
+                location="export_csv",
+                metadata={"error": str(exc)}
+            )
 
     async def handle_save(e):
         nonlocal task_org_dirty
 
         if current_user["tier"] > 1:
             return
-        
-        log_event(
-            actor_id=current_user["id"],
-            actor_role=current_user["tier"],
-            action="EXPORT_PDF",
-            status="SUCCESS",
-            location="export_pdf"
-        )
 
-        if not attendance_registry: 
+        if not attendance_registry:
+            page.snack_bar = ft.SnackBar(ft.Text("No attendance data to export"), bgcolor="red")
+            page.snack_bar.open = True
+            page.update()
             return
+
         try:
             day_order = {"TUE PT": 0, "WED PT": 1, "THU PT": 2, "LAB": 3}
             target_days = list(set(item["col"] for item in attendance_registry))
-            target_days.sort(key=lambda d: day_order.get(d, 99)) 
-            
+            target_days.sort(key=lambda d: day_order.get(d, 99))
+
             pdf_gen = attendance_save.AttendancePDF()
-            
+
             for day in target_days:
                 day_data = []
+
                 for item in attendance_registry:
                     if item["col"] == day:
+                        status_val = getattr(item["status"], "value", None)
+                        late_val = getattr(item["late"], "value", False)
+
                         day_data.append({
                             "name": item["name"],
-                            "ms": item["ms"], 
-                            "status": item["status"].value if item["status"].value else "N/A",
-                            "is_late": item["late"].value
+                            "ms": item["ms"],
+                            "status": status_val if status_val else "N/A",
+                            "is_late": bool(late_val)
                         })
-                
+
                 pdf_gen.generate_combined_report(day, day_data)
 
-            pdf_bytes = pdf_gen.output(dest='S').encode('latin-1')
+            pdf_bytes = pdf_gen.output(dest='S')
+            if isinstance(pdf_bytes, str):
+                pdf_bytes = pdf_bytes.encode('latin-1')
 
             ts = datetime.datetime.now().strftime("%Y-%m-%d")
 
@@ -633,41 +651,62 @@ async def main(page: ft.Page):
                 filename=f"attendance_{ts}.pdf"
             )
 
-            try:
-                start_ts, end_ts = past_n_weeks_range(2)
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="EXPORT_PDF",
+                status="SUCCESS",
+                location="export_pdf"
+            )
 
-                clear_attendance_for_new_week(
-                    clear_events_in_range=(start_ts, end_ts),
-                    reset_current=True,
-                    backup=True
-                )
+            start_ts, end_ts = past_n_weeks_range(2)
 
-                attendance_registry.clear()
-                task_org_dirty = True
+            clear_attendance_for_new_week(
+                clear_events_in_range=(start_ts, end_ts),
+                reset_current=True,
+                backup=True
+            )
 
-                await show_view(False)
+            attendance_registry.clear()
+            task_org_dirty = True
 
-                try:
-                    page.pubsub.send_all("attendance_updated")
-                except:
-                    pass
-
-            except Exception as exc:
-                print("clear_attendance_for_new_week failed:", exc)
+            await show_view(False)
 
             try:
                 page.pubsub.send_all("attendance_updated")
             except:
                 pass
 
-            page.snack_bar = ft.SnackBar(ft.Text("Opening PDF Report..."), bgcolor="green")
+            page.snack_bar = ft.SnackBar(
+                ft.Text("PDF exported successfully"),
+                bgcolor="green"
+            )
             page.snack_bar.open = True
+
         except Exception as ex:
-            print(f"Error: {ex}")
-        if hasattr(page, 'update_async'):
-            await page.update_async()
-        else:
-            page.update()
+            import traceback
+            traceback.print_exc()
+
+            page.snack_bar = ft.SnackBar(
+                ft.Text(f"PDF export failed: {str(ex)}"),
+                bgcolor="red"
+            )
+            page.snack_bar.open = True
+
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="EXPORT_PDF",
+                status="FAILED",
+                location="export_pdf",
+                metadata={"error": str(ex)}
+            )
+
+        finally:
+            if hasattr(page, 'update_async'):
+                await page.update_async()
+            else:
+                page.update()
 
     def open_change_password_dialog(force=False):
 

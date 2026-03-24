@@ -546,7 +546,7 @@ async def main(page: ft.Page):
                 {"label": column_label}
             ))
 
-        await asyncio.to_thread(append_attendance_events, events)
+        append_attendance_events(events)
 
     async def schedule_flush():
         nonlocal flush_task
@@ -1244,13 +1244,20 @@ async def main(page: ft.Page):
                 late_checkbox.disabled = status_dropdown.value != "P"
 
                 status_val = status_dropdown.value if status_dropdown.value else None
-                late_val = 1 if (late_checkbox.value and status_val == "P") else 0
+                late_val = 1 if late_checkbox.value else 0
 
-                async with update_lock:
-                    key = (cadet_id, column_label)
-                    pending_updates[key] = (status_val, late_val)
+                status_dropdown.value = status_val
+                late_checkbox.value = bool(late_val)
+                page.update()
 
-                asyncio.create_task(schedule_flush())
+                await batch_update_attendance_async([
+                    ((cadet_id, column_label), (status_val, late_val))
+                ])
+
+                try:
+                    page.pubsub.send_all("attendance_flushed")
+                except:
+                    pass
 
             status_dropdown = ft.Dropdown(
                 value=current_status,

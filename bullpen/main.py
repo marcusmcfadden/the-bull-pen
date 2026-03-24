@@ -4,7 +4,6 @@ import asyncio
 import time, datetime
 from database import (
     init_db,
-    append_attendance_events,
     upsert_attendance_current,
     get_filtered_cadets,
     update_cadet,
@@ -28,47 +27,6 @@ from log_service import (
 )
 
 async def main(page: ft.Page):
-
-    try:
-        import dev_mode
-        DEV_ENABLED = True
-    except ImportError:
-            DEV_ENABLED = False
-
-    dev_buffer = ""
-
-    def on_key(e: ft.KeyboardEvent):
-        nonlocal dev_buffer
-
-        if not DEV_ENABLED:
-            return
-
-        if not e.key:
-            return
-
-        key = e.key.lower()
-
-        if len(key) == 1:
-            dev_buffer += key
-
-            if len(dev_buffer) > len(dev_mode.DEV_SECRET):
-                dev_buffer = dev_buffer[-len(dev_mode.DEV_SECRET):]
-
-            if dev_buffer == dev_mode.DEV_SECRET:
-                dev_mode.activate_dev_mode(
-                    page,
-                    current_user,
-                    build_drawer,
-                    roster_view,
-                    task_org_view,
-                    profile_view,
-                    btn_roster,
-                    btn_task_org,
-                    update_roster_ui,
-                    open_cadet_modal
-                )
-
-    page.on_keyboard_event = on_key
 
     current_user = {
         "id": None,
@@ -459,6 +417,7 @@ async def main(page: ft.Page):
         roster_view.visible = False
         task_org_view.visible = False
         profile_view.visible = True
+        logs_view.visible = False
 
         page.update()
 
@@ -1741,8 +1700,7 @@ async def main(page: ft.Page):
                 await load_logs()
 
             elif task_org_view.visible:
-                task_org_view.content = await build_task_org()
-                page.update()
+                pass
 
     async def show_view(is_roster):
         nonlocal task_org_dirty, current_route

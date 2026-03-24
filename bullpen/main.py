@@ -65,7 +65,7 @@ async def main(page: ft.Page):
             count = cur.fetchone()[0]
             return count == 0
         except:
-            return True  # table doesn't exist yet
+            return True
         finally:
             conn.close()
 
@@ -668,7 +668,8 @@ async def main(page: ft.Page):
                             "name": item["name"],
                             "ms": item["ms"],
                             "status": status_val if status_val else "N/A",
-                            "is_late": bool(late_val)
+                            "is_late": bool(late_val),
+                            "squad": item["squad"]
                         })
 
                 events = []
@@ -1297,14 +1298,57 @@ async def main(page: ft.Page):
     def confirm_wipe():
 
         def do_wipe(e):
-            wipe_all_attendance()
-            dialog.open = False
 
-            page.snack_bar = ft.SnackBar(
-                ft.Text("ALL attendance data wiped"),
-                bgcolor="red"
-            )
-            page.snack_bar.open = True
+            conn = _conn()
+            cur = conn.cursor()
+
+            cur.execute("SELECT COUNT(*) FROM attendance_events")
+            total_events = cur.fetchone()[0]
+
+            conn.close()
+
+            try:
+                wipe_all_attendance()
+
+                log_event(
+                    actor_id=current_user["id"],
+                    actor_role=current_user["tier"],
+                    action="WIPE_ATTENDANCE",
+                    status="SUCCESS",
+                    location="attendance",
+                    target_type="system",
+                    target_id=None,
+                    metadata=json.dumps({
+                        "deleted_events": total_events,
+                        "scope": "all_records",
+                        "note": "semester reset"
+                    })
+                )
+
+                dialog.open = False
+
+                page.snack_bar = ft.SnackBar(
+                    ft.Text(f"Wiped {total_events} attendance records"),
+                    bgcolor="red"
+                )
+                page.snack_bar.open = True
+
+            except Exception as ex:
+
+                log_event(
+                    actor_id=current_user["id"],
+                    actor_role=current_user["tier"],
+                    action="WIPE_ATTENDANCE",
+                    status="FAILED",
+                    location="attendance",
+                    target_type="system",
+                    target_id=None,
+                    metadata=json.dumps({
+                        "error": str(ex)
+                    })
+                )
+
+                raise
 
             page.update()
 

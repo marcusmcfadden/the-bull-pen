@@ -141,6 +141,53 @@ class AttendancePDF(FPDF):
             self.rect(x_names, y_start, col_w_scaled[self.names_col_idx], row_h)
             self.set_xy(x_table, y_start + row_h)
 
+        self.ln(10)
+        self.set_font("Arial", 'B', 12)
+        self.cell(0, 10, "SQUAD ACCOUNTABILITY", ln=True)
+
+        self.set_font("Arial", 'B', 9)
+        self.cell(50, 8, "Squad", border=1)
+        self.cell(60, 8, "Name", border=1)
+        self.cell(40, 8, "Unexcused Absences", border=1)
+        self.cell(40, 8, "Unexcused Lates", border=1)
+        self.ln()
+
+        self.set_font("Arial", size=9)
+
+        # build summary
+        squad_summary = {}
+
+        for item in clean_data:
+            squad = item.get("squad", "UNKNOWN")
+            name = item.get("name", "")
+
+            if squad not in squad_summary:
+                squad_summary[squad] = {}
+
+            if name not in squad_summary[squad]:
+                squad_summary[squad][name] = {"absent": 0, "late": 0}
+
+            if item.get("status") == "A":
+                squad_summary[squad][name]["absent"] += 1
+
+            if item.get("is_late"):
+                squad_summary[squad][name]["late"] += 1
+
+        # render
+        for squad, cadets in squad_summary.items():
+            for name, stats in sorted(
+                cadets.items(),
+                key=lambda x: (-x[1]["absent"], -x[1]["late"])
+            ):
+                if self.get_y() > self.h - 20:
+                    self.add_page()
+
+                self.cell(50, 8, squad, border=1)
+                self.cell(60, 8, name, border=1)
+                self.cell(40, 8, str(stats["absent"]), border=1)
+                self.cell(40, 8, str(stats["late"]), border=1)
+                self.ln()
+
         graph_x = x_table + left_col_width + spacing_between
         graph_y = y_table
         try:
@@ -283,6 +330,57 @@ async def generate_csv(attendance_registry):
             data["THU PT"][0], data["THU PT"][1],
             data["LAB"][0], data["LAB"][1],
         ])
+
+    writer.writerow([])
+    writer.writerow(["SQUAD SUMMARY"])
+    writer.writerow(["Squad", "Name", "Unexcused Absences", "Unexcused Lates"])
+
+    squad_summary = {}
+
+    for item in attendance_registry:
+        name = item.get("name", "")
+        squad = item.get("squad", "")
+
+        status_ctrl = item.get("status")
+        late_ctrl = item.get("late")
+
+        try:
+            status_val = status_ctrl.value if status_ctrl else None
+        except:
+            status_val = None
+
+        try:
+            is_late = bool(late_ctrl.value) if late_ctrl else False
+        except:
+            is_late = False
+
+        if squad not in squad_summary:
+            squad_summary[squad] = {}
+
+        if name not in squad_summary[squad]:
+            squad_summary[squad][name] = {
+                "absent": 0,
+                "late": 0
+            }
+
+        if status_val == "A":
+            squad_summary[squad][name]["absent"] += 1
+
+        if is_late:
+            squad_summary[squad][name]["late"] += 1
+
+    # write it out
+    for squad, cadets in squad_summary.items():
+        for name, stats in sorted(
+            cadets.items(),
+            key=lambda x: (-x[1]["absent"], -x[1]["late"])
+        ):
+            writer.writerow([
+                squad,
+                name,
+                stats["absent"],
+                stats["late"]
+            ])
 
     csv_text = output.getvalue()
     output.close()

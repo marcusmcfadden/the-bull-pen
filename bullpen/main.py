@@ -1,8 +1,7 @@
 import flet as ft
 import os
 import asyncio
-import time, datetime
-import base64
+import datetime
 from database import (
     init_db,
     upsert_attendance_current,
@@ -548,7 +547,7 @@ async def main(page: ft.Page):
             return
 
         if not attendance_registry:
-            return b""
+            return
 
         log_event(
             actor_id=current_user["id"],
@@ -561,9 +560,12 @@ async def main(page: ft.Page):
         try:
             csv_bytes = await attendance_save.generate_csv(attendance_registry)
 
-            b64 = base64.b64encode(csv_bytes).decode()
+            ts = datetime.datetime.now().strftime("%Y-%m-%d")
 
-            await page.launch_url(f"data:text/csv;base64,{b64}")
+            await page.download(
+                data=csv_bytes,
+                filename=f"attendance_{ts}.csv"
+            )
 
             page.snack_bar = ft.SnackBar(
                 ft.Text("CSV Export Ready"),
@@ -622,10 +624,14 @@ async def main(page: ft.Page):
                 
                 pdf_gen.generate_combined_report(day, day_data)
 
-            pdf_bytes = bytes(pdf_gen.output())
+            pdf_bytes = pdf_gen.output(dest='S').encode('latin-1')
 
-            b64 = base64.b64encode(pdf_bytes).decode()
-            await page.launch_url(f"data:application/pdf;base64,{b64}")
+            ts = datetime.datetime.now().strftime("%Y-%m-%d")
+
+            await page.download(
+                data=pdf_bytes,
+                filename=f"attendance_{ts}.pdf"
+            )
 
             try:
                 start_ts, end_ts = past_n_weeks_range(2)
@@ -1041,7 +1047,7 @@ async def main(page: ft.Page):
                     barrier_color="black54",
                     title=ft.Text("Confirm Promotion"),
                     content=ft.Text(
-                        "Are you sure you want to promote this cadet to Leader\n\n"
+                        "Are you sure you want to promote this cadet to Leader?\n\n"
                         "This action cannot be undone with your authority."
                     ),
                     actions=[
@@ -1134,7 +1140,7 @@ async def main(page: ft.Page):
 
         confirm_dialog = ft.AlertDialog(
             title=ft.Text("Confirm Deletion"),
-            content=ft.Text(f"Are you sure you want to delete {cadet_name}%s"),
+            content=ft.Text(f"Are you sure you want to delete {cadet_name}?"),
             actions=[
                 ft.TextButton("Cancel", on_click=lambda _: [setattr(confirm_dialog, "open", False), page.update()]),
                 ft.Button("Delete", bgcolor=ft.Colors.RED_700, color="white", on_click=finalize_delete),
@@ -1190,7 +1196,7 @@ async def main(page: ft.Page):
             barrier_color="black54",
             title=ft.Text("Confirm Export"),
             content=ft.Text(
-                "Are you sure you would like to save\n\n"
+                "Are you sure you would like to save?\n\n"
                 "Current Attendance will be cleared."
             ),
             actions=[

@@ -2,6 +2,7 @@ import flet as ft
 import os
 import asyncio
 import datetime
+import base64
 import json
 from database import (
     init_db,
@@ -561,17 +562,28 @@ async def main(page: ft.Page):
         try:
             csv_bytes = await attendance_save.generate_csv(attendance_registry)
 
-            ts = datetime.datetime.now().strftime("%Y-%m-%d")
+            if not csv_bytes:
+                raise Exception("CSV generation returned empty data")
 
-            await page.download(
-                data=csv_bytes,
-                filename=f"attendance_{ts}.csv"
+            b64 = base64.b64encode(csv_bytes).decode()
+
+            await page.launch_url(
+                url=f"data:text/csv;base64,{b64}"
+            )
+
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="EXPORT_ATTENDANCE",
+                status="SUCCESS",
+                location="export_csv"
             )
 
             page.snack_bar = ft.SnackBar(
-                ft.Text("CSV Export Ready"),
-                open=True
+                ft.Text("CSV xported successfullyy"),
+                bgcolor="green"
             )
+            page.snack_bar.open = True
 
             start_ts, end_ts = past_n_weeks_range(2)
 
@@ -599,11 +611,17 @@ async def main(page: ft.Page):
             log_event(
                 actor_id=current_user["id"],
                 actor_role=current_user["tier"],
-                action="EXPORT_PDF",
+                action="EXPORT_ATTENDANCE",
                 status="FAILED",
                 location="export_csv",
                 metadata=json.dumps({"error": str(exc)})
             )
+
+        finally:
+            if hasattr(page, 'update_async'):
+                await page.update_async()
+            else:
+                page.update()
 
     async def handle_save(e):
         nonlocal task_org_dirty
@@ -644,10 +662,6 @@ async def main(page: ft.Page):
             pdf_bytes = pdf_gen.output(dest='S')
             if isinstance(pdf_bytes, str):
                 pdf_bytes = pdf_bytes.encode('latin-1')
-
-            ts = datetime.datetime.now().strftime("%Y-%m-%d")
-
-            import base64
 
             b64 = base64.b64encode(pdf_bytes).decode()
 

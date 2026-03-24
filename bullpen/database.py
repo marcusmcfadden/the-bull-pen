@@ -1,4 +1,3 @@
-# database.py
 import os
 import json
 import bcrypt
@@ -7,11 +6,6 @@ from typing import List, Tuple
 
 
 DB_PATH = os.environ.get("BULLPEN_DB")
-
-if not DB_PATH:
-    # local dev fallback
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DB_PATH = os.path.join(BASE_DIR, "bullpen.db")
 
 def _conn(write: bool = False):
     return psycopg2.connect(DB_PATH)
@@ -83,6 +77,28 @@ def init_db() -> None:
             start_ts INTEGER,
             end_ts INTEGER,
             exported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        # Log Service
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            actor_id INTEGER,
+            actor_role INTEGER,
+
+            action TEXT NOT NULL,
+            status TEXT NOT NULL,
+
+            target_type TEXT,
+            target_id INTEGER,
+
+            location TEXT,
+            ip_address TEXT,
+
+            metadata JSONB
         );
         """)
 

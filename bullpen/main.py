@@ -21,6 +21,10 @@ from rbac import (
     can_delete,
     get_user_by_id
 )
+from log_service import (
+    log_event,
+    get_logs
+)
 
 async def main(page: ft.Page):
 
@@ -124,6 +128,8 @@ async def main(page: ft.Page):
     active_ms = set()
     sort_ascending = True
     current_route = "roster"
+    ip_address=None
+    version = "v1.0.0-beta"
 
     attendance_registry = []
     pending_updates = {}
@@ -137,6 +143,14 @@ async def main(page: ft.Page):
 
             if user:
                 current_user.update(user)
+
+                log_event(
+                    actor_id=user["id"],
+                    actor_role=user["tier"],
+                    action="LOGIN",
+                    status="SUCCESS",
+                    location="auth"
+                )
 
                 if user.get("reset_required"):
                     page.controls.clear()
@@ -162,7 +176,12 @@ async def main(page: ft.Page):
                 page.add(
                     ft.Column([
                         ft.Container(
-                            content=ft.Stack([roster_view, task_org_view, profile_view], expand=True),
+                            ft.Stack([roster_view, 
+                                      task_org_view, 
+                                      profile_view, 
+                                      logs_view,
+                                      version_label], 
+                            expand=True),
                             expand=True
                         ),
                         ft.Row([btn_roster, btn_task_org], spacing=0)
@@ -195,6 +214,14 @@ async def main(page: ft.Page):
                 page.run_task(preload_attendance)
             else:
                 status_text.value = "Incorrect username or password"
+
+                log_event(
+                    actor_id=None,
+                    action="LOGIN",
+                    status="FAILED",
+                    location="auth"
+                )
+
                 page.update()
 
         username = ft.TextField(
@@ -296,7 +323,8 @@ async def main(page: ft.Page):
                         width=1000,
                         height=1000            
                     ),
-                    card
+                    card,
+                    version_label
                 ]
             )
         )
@@ -331,6 +359,14 @@ async def main(page: ft.Page):
             flush_task.cancel()
 
         page.drawer.open = False
+
+        log_event(
+            actor_id=current_user["id"],
+            actor_role=current_user["tier"],
+            action="LOGOUT",
+            status="SUCCESS",
+            location="auth"
+        )
 
         current_user["id"] = None
         current_user["tier"] = None
@@ -537,6 +573,18 @@ async def main(page: ft.Page):
             status_val = val[0] if not hasattr(val[0], "value") else val[0].value
             is_late = int(bool(val[1]))
 
+            # success
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="UPDATE_ATTENDANCE",
+                status="SUCCESS",
+                location="attendance",
+                target_id=cadet_id,
+                target_type="cadet",
+                metadata={"column": column_label}
+            )
+
             events.append((
                 cadet_id,
                 now_ts,
@@ -579,6 +627,14 @@ async def main(page: ft.Page):
 
         if not attendance_registry:
             return
+        
+        log_event(
+            actor_id=current_user["id"],
+            actor_role=current_user["tier"],
+            action="EXPORT_ATTENDANCE",
+            status="SUCCESS",
+            location="export_csv"
+        )
 
         start_ts, end_ts = past_n_weeks_range(2)
         label = "past 2 weeks"
@@ -645,6 +701,7 @@ async def main(page: ft.Page):
                 ft.Text(f"Exported {label} and opened CSV"),
                 open=True
             )
+            
         except Exception:
             pass
 
@@ -653,6 +710,14 @@ async def main(page: ft.Page):
 
         if current_user["tier"] > 1:
             return
+        
+        log_event(
+            actor_id=current_user["id"],
+            actor_role=current_user["tier"],
+            action="EXPORT_PDF",
+            status="SUCCESS",
+            location="export_pdf"
+        )
 
         if not attendance_registry: return
         try:
@@ -756,6 +821,15 @@ async def main(page: ft.Page):
             )
             page.snack_bar.open = True
 
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="PASSWORD_CHANGE",
+                status="SUCCESS",
+                target_id=current_user["id"],
+                target_type="cadet"
+            )
+
             if not force:
                 profile_view.visible = True
                 page.update()
@@ -852,8 +926,16 @@ async def main(page: ft.Page):
             }
 
             if not can_edit(current_user, target):
+                log_event(
+                    actor_id=current_user["id"],
+                    actor_role=current_user["tier"],
+                    action="ACCESS_ATTEMPT",
+                    status="DENIED",
+                    target_type="cadet_edit",
+                    target_id=target["id"]
+                )
                 return
-
+            
         is_edit = cadet_data is not None
         
         full_name = cadet_data[1] if is_edit else ""
@@ -1001,6 +1083,17 @@ async def main(page: ft.Page):
                         phone_field.value
                     )
 
+                    if old_tier != new_tier:
+                        log_event(
+                            actor_id=current_user["id"],
+                            actor_role=current_user["tier"],
+                            action="UPDATE_ROLE",
+                            status="SUCCESS",
+                            target_id=cadet_id,
+                            target_type="cadet",
+                            metadata={"old": old_tier, "new": new_tier}
+                        )
+
                     # check missing leader
                     if old_tier == 2 and new_tier != 2:
                         check_no_leader_dialog(squad)
@@ -1014,6 +1107,15 @@ async def main(page: ft.Page):
                         new_tier,
                         email_field.value,
                         phone_field.value
+                    )
+
+                    log_event(
+                        actor_id=current_user["id"],
+                        actor_role=current_user["tier"],
+                        action="CREATE_CADET",
+                        status="SUCCESS",
+                        target_id=cadet_id_new,
+                        target_type="cadet"
                     )
 
                     username = combined_name.lower().replace(" ", "")
@@ -1123,12 +1225,30 @@ async def main(page: ft.Page):
         target = get_user_by_id(cadet_id)
 
         if not can_delete(current_user, target):
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="ACCESS_ATTEMPT",
+                status="DENIED",
+                target_type="cadet_delete",
+                target_id=target["id"]
+            )
             return
 
         def finalize_delete(e):
             delete_cadet(cadet_id)
             confirm_dialog.open = False 
             page.pubsub.send_all("roster_updated")
+
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="ACCESS_ATTEMPT",
+                status="SUCCESS",
+                target_type="cadet_delete",
+                target_id=cadet_id
+            )
+
             page.update()
 
         confirm_dialog = ft.AlertDialog(
@@ -1464,6 +1584,12 @@ async def main(page: ft.Page):
                     title=ft.Text("Logout"),
                     on_click=handle_logout
                 ),
+
+                ft.ListTile(
+                    leading=ft.Icon(ft.Icons.LIST),
+                    title=ft.Text("Activity"),
+                    on_click=lambda e: asyncio.create_task(show_logs())
+                )
             ],
         )
         drawer.open = False
@@ -1608,12 +1734,36 @@ async def main(page: ft.Page):
         ])
     )
 
+    log_list = ft.ListView(expand=True, spacing=5)
+
+    logs_view = ft.Container(
+        content=ft.Column([
+            ft.Text("ACTIVITY LOG", size=20, weight="bold"),
+            log_list
+        ]),
+        expand=True,
+        padding=10,
+        visible=False
+    )
+
+    version_label = ft.Container(
+        content=ft.Text(
+            version,
+            size=10,
+            color="grey",
+            weight="bold"
+        ),
+        alignment=ft.alignment.top_right,
+        padding=ft.padding.only(top=10, right=10),
+    )
+
     async def show_view(is_roster):
         nonlocal task_org_dirty, current_route
 
         filter_anchor.visible = False
 
         profile_view.visible = False
+        logs_view.visible = False
 
         roster_view.visible = is_roster
         task_org_view.visible = not is_roster
@@ -1633,10 +1783,44 @@ async def main(page: ft.Page):
 
         page.update()
 
+    async def load_logs():
+        logs = await asyncio.to_thread(get_logs, 50)
+
+        log_list.controls.clear()
+
+        for log in logs:
+            ts = log["timestamp"]
+            time_str = ts.strftime("%H:%M") if ts else "??:??"
+            actor_id = log.get("actor_id")
+            actor = f"cadet_{actor_id}" if actor_id is not None else "unknown"
+
+            action = log["action"]
+            action_readable = action.lower().replace("_", " ")
+
+            if action == "UPDATE_ATTENDANCE":
+                target = log.get("target_id")
+                text = f"[{time_str}] {actor} updated cadet_{target} attendance"
+
+            elif action == "LOGIN":
+                text = f"[{time_str}] {actor} logged in"
+
+            elif action == "LOGOUT":
+                text = f"[{time_str}] {actor} logged out"
+
+            elif action == "ACCESS_ATTEMPT" and log["status"] == "DENIED":
+                text = f"[{time_str}] {actor} attempted restricted access"
+
+            else:
+                text = f"[{time_str}] {actor} {action_readable}"
+
+            log_list.controls.append(ft.Text(text, size=12))
+
+        page.update()
+
     # Bottom Nav
     rect_style = ft.ButtonStyle(
         shape=ft.RoundedRectangleBorder(radius=0),
-        text_style=ft.TextStyle(font_family="standard")  # 🔧 merge here
+        text_style=ft.TextStyle(font_family="standard")
     )
 
     btn_roster = ft.Button(
@@ -1649,9 +1833,24 @@ async def main(page: ft.Page):
         style=rect_style
     )
 
+    async def show_logs():
+        roster_view.visible = False
+        task_org_view.visible = False
+        profile_view.visible = False
+        logs_view.visible = True
+
+        await load_logs()
 
     def handle_attendance_click(e):
         if current_user["tier"] is not None and current_user["tier"] > 2:
+
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="ACCESS_ATTEMPT",
+                status="DENIED",
+                target_type="attendance_view"
+            )
 
             def close_dialog(e):
                 dialog.open = False

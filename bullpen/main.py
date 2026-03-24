@@ -1753,7 +1753,7 @@ async def main(page: ft.Page):
             color="grey",
             weight="bold"
         ),
-        alignment=ft.alignment.top_right,
+        alignment=ft.Alignment.TOP_RIGHT,
         padding=ft.padding.only(top=10, right=10),
     )
 

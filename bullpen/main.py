@@ -2,6 +2,7 @@ import flet as ft
 import os
 import asyncio
 import datetime
+import json
 from database import (
     init_db,
     upsert_attendance_current,
@@ -601,7 +602,7 @@ async def main(page: ft.Page):
                 action="EXPORT_PDF",
                 status="FAILED",
                 location="export_csv",
-                metadata={"error": str(exc)}
+                metadata=json.dumps({"error": str(exc)})
             )
 
     async def handle_save(e):
@@ -646,9 +647,12 @@ async def main(page: ft.Page):
 
             ts = datetime.datetime.now().strftime("%Y-%m-%d")
 
-            await page.download(
-                data=pdf_bytes,
-                filename=f"attendance_{ts}.pdf"
+            import base64
+
+            b64 = base64.b64encode(pdf_bytes).decode()
+
+            await page.launch_url(
+                url=f"data:application/pdf;base64,{b64}"
             )
 
             log_event(
@@ -699,7 +703,7 @@ async def main(page: ft.Page):
                 action="EXPORT_PDF",
                 status="FAILED",
                 location="export_pdf",
-                metadata={"error": str(ex)}
+                metadata=json.dumps({"error": str(ex)})
             )
 
         finally:

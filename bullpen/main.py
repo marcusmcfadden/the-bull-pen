@@ -567,7 +567,7 @@ async def main(page: ft.Page):
 
             b64 = base64.b64encode(csv_bytes).decode()
 
-            await page.launch_url(
+            await ft.UrlLauncher().launch_url(
                 url=f"data:text/csv;base64,{b64}"
             )
 
@@ -665,7 +665,7 @@ async def main(page: ft.Page):
 
             b64 = base64.b64encode(pdf_bytes).decode()
 
-            await page.launch_url(
+            await ft.UrlLauncher().launch_url(
                 url=f"data:application/pdf;base64,{b64}"
             )
 

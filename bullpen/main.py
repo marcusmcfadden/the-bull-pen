@@ -1035,7 +1035,7 @@ async def main(page: ft.Page):
                             status="SUCCESS",
                             target_id=cadet_id,
                             target_type="cadet",
-                            metadata={"old": old_tier, "new": new_tier}
+                            metadata=json.dumps{"old": old_tier, "new": new_tier}
                         )
 
                     # check missing leader
@@ -1338,7 +1338,7 @@ async def main(page: ft.Page):
                     location="attendance",
                     target_id=cadet_id,
                     target_type="cadet",
-                    metadata={
+                    metadata=json.dumps{
                         "column": column_label,
                         "status": status_val,
                         "late": late_val

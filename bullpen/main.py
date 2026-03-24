@@ -128,7 +128,7 @@ async def main(page: ft.Page):
     active_ms = set()
     sort_ascending = True
     current_route = "roster"
-    ip_address=None
+    ip_address = None
 
     attendance_registry = []
     pending_updates = {}
@@ -143,8 +143,8 @@ async def main(page: ft.Page):
             color="grey",
             weight="bold"
         ),
-        top=10,
-        right=10
+        alignment=ft.Alignment.TOP_RIGHT,
+        padding=ft.padding.only(top=10, right=10),
     )
 
     def build_login_view():

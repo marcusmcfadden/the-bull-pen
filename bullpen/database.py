@@ -335,6 +335,41 @@ def wipe_all_attendance():
     conn.commit()
     conn.close()
 
+def get_cadet_stats(cadet_id):
+    conn = _conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT present_count, absent_count, excused_count, late_count
+        FROM cadet_attendance_stats
+        WHERE cadet_id = %s
+    """, (cadet_id,))
+
+    row = cur.fetchone()
+    conn.close()
+
+    return row if row else (0, 0, 0, 0)
+
+def update_cadet_stats(cadet_id, present, absent, excused, late):
+    conn = _conn(write=True)
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO cadet_attendance_stats (
+            cadet_id, present_count, absent_count, excused_count, late_count
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (cadet_id)
+        DO UPDATE SET
+            present_count = EXCLUDED.present_count,
+            absent_count = EXCLUDED.absent_count,
+            excused_count = EXCLUDED.excused_count,
+            late_count = EXCLUDED.late_count
+    """, (cadet_id, present, absent, excused, late))
+
+    conn.commit()
+    conn.close()
+
 if __name__ == "__main__":
     print("Creating database...")
     init_db()

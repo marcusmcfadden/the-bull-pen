@@ -16,6 +16,8 @@ from database import (
     delete_cadet,
     clear_attendance_for_new_week,
     wipe_all_attendance,
+    get_cadet_stats,
+    update_cadet_stats,
     _conn
 )
 import attendance_save
@@ -331,6 +333,24 @@ async def main(page: ft.Page):
 
     page.add(splash)
 
+    def build_stats_panel(present, absent, excused, late):
+        return ft.Container(
+            content=ft.Column([
+                ft.Text("ATTENDANCE", weight="bold", size=16),
+
+                ft.Divider(),
+
+                ft.Text(f"Present: {present}"),
+                ft.Text(f"Absent: {absent}"),
+                ft.Text(f"Excused: {excused}"),
+                ft.Text(f"Late: {late}"),
+            ]),
+            padding=15,
+            width=220,
+            bgcolor=ft.Colors.WHITE10,
+            border_radius=10
+        )
+
     async def load_ui():
         await asyncio.sleep(0.3)
         page.controls.clear()
@@ -411,9 +431,16 @@ async def main(page: ft.Page):
 
             viewing_cadet_id = c_id
 
+            present, absent, excused, late = get_cadet_stats(viewing_cadet_id)
+
             profile_username.value = user_data.get("username", "N/A")
 
         name_parts = c_name.split(" ", 1)
+
+        profile_present.value = str(present)
+        profile_absent.value = str(absent)
+        profile_excused.value = str(excused)
+        profile_late.value = str(late)
 
         profile_first_name.value = name_parts[0]
         profile_last_name.value = name_parts[1] if len(name_parts) > 1 else ""
@@ -505,7 +532,7 @@ async def main(page: ft.Page):
                         ft.PopupMenuItem(
                             "Edit",
                             icon=ft.Icons.EDIT,
-                            on_click=lambda _, d=cadet: open_cadet_modal(d)
+                            on_click=lambda _, d=cadet: go_profile(cadet_data=d)
                         )
                     )
 
@@ -671,6 +698,33 @@ async def main(page: ft.Page):
                             "is_late": bool(late_val),
                             "squad": item["squad"]
                         })
+
+                from collections import defaultdict
+
+                cadet_counts = defaultdict(lambda: {"P":0, "A":0, "E":0, "L":0})
+
+                for item in day_data:
+                    cid = item["cadet_id"]
+                    status = item["status"]
+
+                    if status == "P":
+                        cadet_counts[cid]["P"] += 1
+                    elif status == "A":
+                        cadet_counts[cid]["A"] += 1
+                    elif status == "E":
+                        cadet_counts[cid]["E"] += 1
+
+                    if item["is_late"]:
+                        cadet_counts[cid]["L"] += 1
+
+                for cid, c in cadet_counts.items():
+                    update_cadet_stats(
+                        cid,
+                        c["P"],
+                        c["A"],
+                        c["E"],
+                        c["L"]
+                    )
 
                 events = []
 
@@ -910,6 +964,12 @@ async def main(page: ft.Page):
                 return
             
         is_edit = cadet_data is not None
+
+        present = absent = excused = late = 0
+
+        if cadet_data:
+            cadet_id = cadet_data[0]
+            present, absent, excused, late = get_cadet_stats(cadet_id)
         
         full_name = cadet_data[1] if is_edit else ""
         name_parts = full_name.split(" ", 1)
@@ -1150,6 +1210,21 @@ async def main(page: ft.Page):
             continue_save()
 
         # Build the UI Structure
+
+        stats_section = ft.Column([
+            ft.Text("Attendance Stats", weight="bold", color="blue200"),
+
+            ft.Row([
+                ft.Text(f"Present: {present}"),
+                ft.Text(f"Absent: {absent}")
+            ]),
+
+            ft.Row([
+                ft.Text(f"Excused: {excused}"),
+                ft.Text(f"Late: {late}")
+            ])
+        ], spacing=5)
+
         dialog = ft.AlertDialog(
                     modal=True,
                     barrier_color="black54",
@@ -1170,6 +1245,9 @@ async def main(page: ft.Page):
                                 ft.Row([first_name, last_name]),
                                 school_dropdown,
                                 ft.Row([ms_level, squad_dropdown]),
+
+                                stats_section,
+
                                 ft.Text("Contact Info", weight="bold", color="blue200"),
                                 ft.Row([
                                     email_field,
@@ -1480,6 +1558,7 @@ async def main(page: ft.Page):
             late_checkbox.on_change = sync_status
 
             attendance_registry.append({
+                "cadet_id": cadet_id, 
                 "name": cadet_name,
                 "ms": cadet_ms,
                 "squad": cadet_squad,
@@ -1752,6 +1831,10 @@ async def main(page: ft.Page):
     profile_school = ft.Text()
     profile_email = ft.Text()
     profile_phone = ft.Text()
+    profile_present = ft.Text()
+    profile_absent = ft.Text()
+    profile_excused = ft.Text()
+    profile_late = ft.Text()
 
     def open_edit_profile(e):
         open_cadet_modal((
@@ -1803,6 +1886,17 @@ async def main(page: ft.Page):
                     ft.Row([ft.Text("School:", weight="bold"), profile_school]),
                     ft.Row([ft.Text("Email:", weight="bold"), profile_email]),
                     ft.Row([ft.Text("Phone:", weight="bold"), profile_phone]),
+
+                    ft.Divider(),
+
+                    ft.Text("ATTENDANCE STATS", weight="bold", color="blue200"),
+
+                    build_stats_panel(
+                        int(profile_present.value or 0),
+                        int(profile_absent.value or 0),
+                        int(profile_excused.value or 0),
+                        int(profile_late.value or 0)
+                    ),
 
                     ft.Container(height=10),
                     ft.Button(

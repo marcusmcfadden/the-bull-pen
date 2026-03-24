@@ -134,6 +134,7 @@ async def main(page: ft.Page):
     pending_updates = {}
 
     task_org_dirty = True
+    auto_refresh_running = False
 
     version = "v1.0.0-beta"
     version_label = ft.TransparentPointer(
@@ -164,6 +165,11 @@ async def main(page: ft.Page):
                     status="SUCCESS",
                     location="auth"
                 )
+
+                nonlocal auto_refresh_running
+                if not auto_refresh_running:
+                    page.run_task(auto_refresh)
+                    auto_refresh_running = True
 
                 if user.get("reset_required"):
                     page.controls.clear()
@@ -1256,7 +1262,7 @@ async def main(page: ft.Page):
             log_event(
                 actor_id=current_user["id"],
                 actor_role=current_user["tier"],
-                action="ACCESS_ATTEMPT",
+                action="DELETE_CADET",
                 status="SUCCESS",
                 target_type="cadet_delete",
                 target_id=cadet_id
@@ -1758,6 +1764,20 @@ async def main(page: ft.Page):
         padding=10,
         visible=False
     )
+
+    async def auto_refresh():
+        while True:
+            await asyncio.sleep(3)
+
+            if not current_user["id"]:
+                break
+
+            if logs_view.visible:
+                await load_logs()
+
+            elif task_org_view.visible:
+                task_org_view.content = await build_task_org()
+                page.update()
 
     async def show_view(is_roster):
         nonlocal task_org_dirty, current_route

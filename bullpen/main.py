@@ -12,7 +12,6 @@ from database import (
     register_cadet,
     create_auth_user,
     delete_cadet,
-    create_attendance_export,
     clear_attendance_for_new_week,
     _conn
 )
@@ -1035,7 +1034,7 @@ async def main(page: ft.Page):
                             status="SUCCESS",
                             target_id=cadet_id,
                             target_type="cadet",
-                            metadata=json.dumps{"old": old_tier, "new": new_tier}
+                            metadata=json.dumps({"old": old_tier, "new": new_tier})
                         )
 
                     # check missing leader
@@ -1338,11 +1337,11 @@ async def main(page: ft.Page):
                     location="attendance",
                     target_id=cadet_id,
                     target_type="cadet",
-                    metadata=json.dumps{
+                    metadata=json.dumps({
                         "column": column_label,
                         "status": status_val,
                         "late": late_val
-                    }
+                    })
                 )
 
                 status_dropdown.value = status_val

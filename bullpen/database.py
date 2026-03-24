@@ -233,6 +233,22 @@ def get_filtered_cadets(query: str = "", schools=None, squads=None, ms_levels=No
 
 # Attendance Log
 
+def upsert_attendance_current(cadet_id, day, status, is_late):
+    conn = _conn(write=True)
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO attendance_current (cadet_id, day, status, is_late)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (cadet_id, day)
+        DO UPDATE SET
+            status = EXCLUDED.status,
+            is_late = EXCLUDED.is_late
+    """, (cadet_id, day, status, is_late))
+
+    conn.commit()
+    conn.close()
+
 def append_attendance_events(events_list: List[Tuple]):
     conn = _conn(write=True)
     try:

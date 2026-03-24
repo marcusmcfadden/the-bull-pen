@@ -5,6 +5,7 @@ import time, datetime
 from database import (
     init_db,
     append_attendance_events,
+    upsert_attendance_current,
     get_filtered_cadets,
     update_cadet,
     register_cadet,
@@ -91,7 +92,6 @@ async def main(page: ft.Page):
     init_db()
 
     from seed import seed_data
-    import os
     from database import DB_PATH
 
     def is_db_empty():
@@ -131,7 +131,6 @@ async def main(page: ft.Page):
     ip_address = None
 
     attendance_registry = []
-    pending_updates = {}
 
     task_org_dirty = True
     auto_refresh_running = False
@@ -582,62 +581,6 @@ async def main(page: ft.Page):
 
         search_task = asyncio.create_task(search_logic())
 
-
-    async def batch_update_attendance_async(updates):
-        now_ts = int(time.time())
-
-        events = []
-        for key, val in updates:
-            cadet_id, column_label = key
-            status_val = val[0] if not hasattr(val[0], "value") else val[0].value
-            is_late = int(bool(val[1]))
-
-            # success
-            log_event(
-                actor_id=current_user["id"],
-                actor_role=current_user["tier"],
-                action="UPDATE_ATTENDANCE",
-                status="SUCCESS",
-                location="attendance",
-                target_id=cadet_id,
-                target_type="cadet",
-                metadata={"column": column_label}
-            )
-
-            events.append((
-                cadet_id,
-                now_ts,
-                status_val,
-                is_late,
-                "ui",
-                {"label": column_label}
-            ))
-
-        append_attendance_events(events)
-
-    async def schedule_flush():
-        nonlocal flush_task
-        if flush_task and not flush_task.done():
-            return
-
-        async def flush_logic():
-            nonlocal flush_task
-            try:
-                async with update_lock:
-                    if pending_updates:
-                        updates = list(pending_updates.items())
-                        pending_updates.clear()
-                        await batch_update_attendance_async(updates)
-
-                        try:
-                            page.pubsub.send_all("attendance_flushed")
-                        except:
-                            pass
-            finally:
-                flush_task = None
-
-        flush_task = asyncio.create_task(flush_logic())
-
     async def handle_save_csv(e):
         nonlocal task_org_dirty
 
@@ -822,7 +765,7 @@ async def main(page: ft.Page):
                 page.update()
                 return
 
-            from database import update_user_password, _conn
+            from database import update_user_password
 
             update_user_password(current_user["id"], new_password.value)
 
@@ -1352,7 +1295,6 @@ async def main(page: ft.Page):
         if current_user["tier"] == 2:
             cadets = [c for c in cadets if c[4] == current_user["squad"]]
         
-        from database import _conn
         conn = _conn()
         cursor = conn.cursor()
         cursor.execute("""
@@ -1385,13 +1327,36 @@ async def main(page: ft.Page):
                 status_val = status_dropdown.value if status_dropdown.value else None
                 late_val = 1 if late_checkbox.value else 0
 
+                try:
+                    await asyncio.to_thread(
+                        upsert_attendance_current,
+                        cadet_id,
+                        column_label,
+                        status_val,
+                        late_val
+                    )
+                except Exception as e:
+                    print("Attendance update failed:", e)
+                    return
+
+                log_event(
+                    actor_id=current_user["id"],
+                    actor_role=current_user["tier"],
+                    action="UPDATE_ATTENDANCE",
+                    status="SUCCESS",
+                    location="attendance",
+                    target_id=cadet_id,
+                    target_type="cadet",
+                    metadata={
+                        "column": column_label,
+                        "status": status_val,
+                        "late": late_val
+                    }
+                )
+
                 status_dropdown.value = status_val
                 late_checkbox.value = bool(late_val)
                 page.update()
-
-                await batch_update_attendance_async([
-                    ((cadet_id, column_label), (status_val, late_val))
-                ])
 
                 try:
                     page.pubsub.send_all("attendance_flushed")

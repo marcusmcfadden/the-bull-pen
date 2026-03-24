@@ -129,12 +129,23 @@ async def main(page: ft.Page):
     sort_ascending = True
     current_route = "roster"
     ip_address=None
-    version = "v1.0.0-beta"
 
     attendance_registry = []
     pending_updates = {}
 
     task_org_dirty = True
+
+    version = "v1.0.0-beta"
+    version_label = ft.Container(
+        content=ft.Text(
+            version,
+            size=10,
+            color="grey",
+            weight="bold"
+        ),
+        top=10,
+        right=10
+    )
 
     def build_login_view():
 
@@ -1744,17 +1755,6 @@ async def main(page: ft.Page):
         expand=True,
         padding=10,
         visible=False
-    )
-
-    version_label = ft.Container(
-        content=ft.Text(
-            version,
-            size=10,
-            color="grey",
-            weight="bold"
-        ),
-        alignment=ft.Alignment.TOP_RIGHT,
-        padding=ft.padding.only(top=10, right=10),
     )
 
     async def show_view(is_roster):

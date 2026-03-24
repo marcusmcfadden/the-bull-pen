@@ -428,7 +428,7 @@ async def main(page: ft.Page):
         if not current_user["id"]:
             return
 
-        if msg in ["roster_updated", "attendance_flushed"]:
+        if msg in ["roster_updated", "attendance_updated"]:
             page.run_task(update_roster_ui)
 
             nonlocal task_org_dirty
@@ -548,7 +548,7 @@ async def main(page: ft.Page):
 
         if not attendance_registry:
             return
-        
+
         log_event(
             actor_id=current_user["id"],
             actor_role=current_user["tier"],
@@ -557,74 +557,25 @@ async def main(page: ft.Page):
             location="export_csv"
         )
 
-        start_ts, end_ts = past_n_weeks_range(2)
-        label = "past 2 weeks"
-
         try:
-            export_id = create_attendance_export(label=label, start_ts=start_ts, end_ts=end_ts, backup=True)
-        except Exception as exc:
-            print("create_attendance_export failed:", exc)
-            return
-        try:
-            conn = _conn()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT cadet_id, event_ts, status, is_late, source, metadata, created_at
-                FROM attendance_events
-                WHERE event_ts BETWEEN %s AND %s
-                ORDER BY cadet_id, event_ts DESC
-            """, (int(start_ts), int(end_ts)))
-            rows = cur.fetchall()
-        except Exception as exc:
-            print("CSV read failed:", exc)
-            return
-        finally:
-            try:
-                conn.close()
-            except:
-                pass
+            csv_bytes = await attendance_save.generate_csv(attendance_registry, page)
 
-        import io, csv
-        out = io.StringIO()
-        writer = csv.writer(out)
-        writer.writerow(["cadet_id", "event_ts", "status", "is_late", "source", "metadata", "created_at"])
-        for r in rows:
-            writer.writerow(r)
-        csv_bytes = out.getvalue().encode("utf-8")
+            ts = int(time.time())
+            os.makedirs("assets/reports", exist_ok=True)
+            filename = f"assets/reports/attendance_export_{ts}.csv"
 
-        ts = int(time.time())
-        os.makedirs("assets/reports", exist_ok=True)
-        filename = f"attendance_export_{export_id}_{ts}.csv"
-        try:
-            with open(filename, "wb") as fh:
-                fh.write(csv_bytes)
-        except Exception as exc:
-            print("Failed to write CSV file:", exc)
+            with open(filename, "wb") as f:
+                f.write(csv_bytes)
 
-        await page.launch_url(filename.replace("assets/", ""))
+            await page.launch_url(filename.replace("assets/", ""))
 
-        try:
-            clear_attendance_for_new_week(clear_events_in_range=(start_ts, end_ts), reset_current=True, backup=True)
-            attendance_registry.clear()
-            task_org_dirty = True
-
-            await show_view(False)
-        except Exception as exc:
-            print("clear_attendance_for_new_week failed:", exc)
-
-        try:
-            page.pubsub.send_all("attendance_flushed")
-        except Exception:
-            pass
-
-        try:
             page.snack_bar = ft.SnackBar(
-                ft.Text(f"Exported {label} and opened CSV"),
+                ft.Text("CSV Export Ready"),
                 open=True
             )
-            
-        except Exception:
-            pass
+
+        except Exception as exc:
+            print("CSV export failed:", exc)
 
     async def handle_save(e):
         nonlocal task_org_dirty
@@ -1295,7 +1246,16 @@ async def main(page: ft.Page):
                         late_val
                     )
                 except Exception as e:
-                    print("Attendance update failed:", e)
+                    import traceback
+                    traceback.print_exc()
+
+                    page.snack_bar = ft.SnackBar(
+                        ft.Text(f"Attendance error: {str(e)}"),
+                        bgcolor="red"
+                    )
+                    page.snack_bar.open = True
+                    page.update()
+
                     return
 
                 log_event(
@@ -1318,7 +1278,7 @@ async def main(page: ft.Page):
                 page.update()
 
                 try:
-                    page.pubsub.send_all("attendance_flushed")
+                    page.pubsub.send_all("attendance_updated")
                 except:
                     pass
 

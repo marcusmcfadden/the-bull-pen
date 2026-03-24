@@ -169,15 +169,15 @@ def login_user(username: str, password: str):
 
 # Cadet Management
 
-def register_cadet(name: str, ms_level: int, school: str, squad: str, tier: int) -> int:
+def register_cadet(name: str, ms_level: int, school: str, squad: str, tier: int, email: str, phone: str) -> int:
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO cadets (name, ms_level, school, squad, tier)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO cadets (name, ms_level, school, squad, tier, email, phone)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (name, ms_level, school, squad, tier))
+        """, (name, ms_level, school, squad, tier, email, phone))
 
         cadet_id = cur.fetchone()[0]
         conn.commit()
@@ -185,12 +185,12 @@ def register_cadet(name: str, ms_level: int, school: str, squad: str, tier: int)
     finally:
         conn.close()
 
-def update_cadet(cadet_id: int, name: str, ms_level: int, school: str, squad: str, tier: int):
+def update_cadet(cadet_id: int, name: str, ms_level: int, school: str, squad: str, tier: int, email: str, phone: str):
     conn = _conn(write=True)
     try:
         cur = conn.cursor()
         cur.execute("""
-            UPDATE cadets SET name=%s, ms_level=%s, school=%s, squad=%s, tier=%s
+            UPDATE cadets SET name=%s, ms_level=%s, school=%s, squad=%s, tier=%s, email=%s, phone=%s
             WHERE id=%s
         """, (name, ms_level, school, squad, tier, cadet_id))
         conn.commit()
@@ -234,17 +234,22 @@ def get_filtered_cadets(query: str = "", schools=None, squads=None, ms_levels=No
 # Attendance Log
 
 def upsert_attendance_current(cadet_id, day, status, is_late):
+    import time
+
     conn = _conn(write=True)
     cur = conn.cursor()
 
+    ts = int(time.time())
+
     cur.execute("""
-        INSERT INTO attendance_current (cadet_id, day, status, is_late)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO attendance_current (cadet_id, day, status, is_late, updated_ts)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (cadet_id, day)
         DO UPDATE SET
             status = EXCLUDED.status,
-            is_late = EXCLUDED.is_late
-    """, (cadet_id, day, status, is_late))
+            is_late = EXCLUDED.is_late,
+            updated_ts = EXCLUDED.updated_ts
+    """, (cadet_id, day, status, is_late, ts))
 
     conn.commit()
     conn.close()

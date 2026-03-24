@@ -198,7 +198,7 @@ class AttendancePDF(FPDF):
                 pass
 
 
-async def generate_csv(attendance_registry, page):
+async def generate_csv(attendance_registry):
     if not attendance_registry:
         return
 
@@ -287,8 +287,5 @@ async def generate_csv(attendance_registry, page):
     csv_text = output.getvalue()
     output.close()
 
-    csv_bytes = csv_text.encode('utf-8')
-    csv_base64 = base64.b64encode(csv_bytes).decode('utf-8')
-    data_uri = f"data:text/csv;base64,{csv_base64}"
-
-    await page.launch_url(data_uri)
+    csv_bytes = csv_text.encode("utf-8")
+    return csv_bytes

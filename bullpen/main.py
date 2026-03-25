@@ -336,10 +336,6 @@ async def main(page: ft.Page):
     def build_stats_panel(present, absent, excused, late):
         return ft.Container(
             content=ft.Column([
-                ft.Text("ATTENDANCE", weight="bold", size=16),
-
-                ft.Divider(),
-
                 ft.Text(f"Present: {present}"),
                 ft.Text(f"Absent: {absent}"),
                 ft.Text(f"Excused: {excused}"),
@@ -531,7 +527,7 @@ async def main(page: ft.Page):
                         ft.PopupMenuItem(
                             "Edit",
                             icon=ft.Icons.EDIT,
-                            on_click=lambda _, d=cadet: go_profile(cadet_data=d)
+                            on_click=lambda _, d=cadet: open_cadet_modal(cadet_data=d)
                         )
                     )
 

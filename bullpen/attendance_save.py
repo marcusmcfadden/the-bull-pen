@@ -142,51 +142,6 @@ class AttendancePDF(FPDF):
             self.set_xy(x_table, y_start + row_h)
 
         self.ln(10)
-        self.set_font("Arial", 'B', 12)
-        self.cell(0, 10, "SQUAD ACCOUNTABILITY", ln=True)
-
-        self.set_font("Arial", 'B', 9)
-        self.cell(50, 8, "Squad", border=1)
-        self.cell(60, 8, "Name", border=1)
-        self.cell(40, 8, "Unexcused Absences", border=1)
-        self.cell(40, 8, "Unexcused Lates", border=1)
-        self.ln()
-
-        self.set_font("Arial", size=9)
-
-        # build summary
-        squad_summary = {}
-
-        for item in clean_data:
-            squad = item.get("squad", "UNKNOWN")
-            name = item.get("name", "")
-
-            if squad not in squad_summary:
-                squad_summary[squad] = {}
-
-            if name not in squad_summary[squad]:
-                squad_summary[squad][name] = {"absent": 0, "late": 0}
-
-            if item.get("status") == "A":
-                squad_summary[squad][name]["absent"] += 1
-
-            if item.get("is_late"):
-                squad_summary[squad][name]["late"] += 1
-
-        # render
-        for squad, cadets in squad_summary.items():
-            for name, stats in sorted(
-                cadets.items(),
-                key=lambda x: (-x[1]["absent"], -x[1]["late"])
-            ):
-                if self.get_y() > self.h - 20:
-                    self.add_page()
-
-                self.cell(50, 8, squad, border=1)
-                self.cell(60, 8, name, border=1)
-                self.cell(40, 8, str(stats["absent"]), border=1)
-                self.cell(40, 8, str(stats["late"]), border=1)
-                self.ln()
 
         graph_x = x_table + left_col_width + spacing_between
         graph_y = y_table
@@ -244,6 +199,59 @@ class AttendancePDF(FPDF):
             except Exception:
                 pass
 
+    def generate_squad_summary_page(self, squad_totals):
+        self.add_page()
+
+        self.set_font("Arial", 'B', 28)
+        self.cell(0, 15, "ATTENDANCE BY SQUAD", ln=True, align='C')
+
+        margin = 10
+        top_offset = 30
+
+        col_w = (self.w - 3 * margin) / 2
+        row_h = (self.h - top_offset - 3 * margin) / 2
+
+        positions = [
+            ("1st Squad", margin, top_offset),
+            ("2nd Squad", margin * 2 + col_w, top_offset),
+            ("3rd Squad", margin, top_offset + row_h + margin),
+            ("MS4", margin * 2 + col_w, top_offset + row_h + margin),
+        ]
+
+        for squad_name, x, y in positions:
+            self.set_xy(x, y)
+
+            self.set_font("Arial", 'B', 12)
+            self.cell(col_w, 8, squad_name, border=1, ln=1)
+
+            self.set_x(x)
+            self.set_font("Arial", 'B', 9)
+            self.cell(col_w * 0.5, 6, "Name", border=1)
+            self.cell(col_w * 0.25, 6, "Absent", border=1)
+            self.cell(col_w * 0.25, 6, "Late", border=1)
+            self.ln()
+
+            self.set_font("Arial", size=9)
+
+            squad_data = squad_totals.get(squad_name, {})
+
+            sorted_rows = sorted(
+                squad_data.items(),
+                key=lambda x: (-x[1]["absent"], -x[1]["late"])
+            )
+
+            for name, stats in sorted_rows:
+                if stats["absent"] == 0 and stats["late"] == 0:
+                    continue
+
+                self.set_x(x)
+                self.cell(col_w * 0.5, 6, name.split()[-1], border=1)
+                self.cell(col_w * 0.25, 6, str(stats["absent"]), border=1)
+                self.cell(col_w * 0.25, 6, str(stats["late"]), border=1)
+                self.ln()
+
+                if self.get_y() > y + row_h:
+                    break
 
 async def generate_csv(attendance_registry):
     if not attendance_registry:

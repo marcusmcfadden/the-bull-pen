@@ -5,32 +5,11 @@ import datetime
 import base64
 import json
 import time
-from database import (
-    init_db,
-    append_attendance_events,
-    upsert_attendance_current,
-    get_filtered_cadets,
-    update_cadet,
-    register_cadet,
-    create_auth_user,
-    delete_cadet,
-    clear_attendance_for_new_week,
-    wipe_all_attendance,
-    get_cadet_stats,
-    update_cadet_stats,
-    _conn
-)
+from database import *
+from database import _conn
 import attendance_save
-from rbac import (
-    authenticate_user,
-    can_edit,
-    can_delete,
-    get_user_by_id
-)
-from log_service import (
-    log_event,
-    get_logs
-)
+from rbac import *
+from log_service import *
 
 async def main(page: ft.Page):
 
@@ -677,7 +656,11 @@ async def main(page: ft.Page):
 
             pdf_gen = attendance_save.AttendancePDF()
 
+            from collections import defaultdict
+            squad_totals = defaultdict(lambda: defaultdict(lambda: {"absent": 0, "late": 0}))
+
             for day in target_days:
+                events = []
                 day_data = []
 
                 for item in attendance_registry:
@@ -694,34 +677,15 @@ async def main(page: ft.Page):
                             "squad": item["squad"]
                         })
 
-                from collections import defaultdict
-
-                cadet_counts = defaultdict(lambda: {"P":0, "A":0, "E":0, "L":0})
-
                 for item in day_data:
-                    cid = item["cadet_id"]
-                    status = item["status"]
-
-                    if status == "P":
-                        cadet_counts[cid]["P"] += 1
-                    elif status == "A":
-                        cadet_counts[cid]["A"] += 1
-                    elif status == "E":
-                        cadet_counts[cid]["E"] += 1
+                    squad = item["squad"]
+                    name = item["name"]
+                
+                    if item["status"] == "A":
+                        squad_totals[squad][name]["absent"] += 1
 
                     if item["is_late"]:
-                        cadet_counts[cid]["L"] += 1
-
-                for cid, c in cadet_counts.items():
-                    update_cadet_stats(
-                        cid,
-                        c["P"],
-                        c["A"],
-                        c["E"],
-                        c["L"]
-                    )
-
-                events = []
+                        squad_totals[squad][name]["late"] += 1
 
                 for item in day_data:
                     events.append((
@@ -736,6 +700,8 @@ async def main(page: ft.Page):
                 append_attendance_events(events)
 
                 pdf_gen.generate_combined_report(day, day_data)
+
+            pdf_gen.generate_squad_summary_page(squad_totals)
 
             pdf_bytes = pdf_gen.output(dest='S')
             if isinstance(pdf_bytes, str):

@@ -1992,7 +1992,7 @@ async def main(page: ft.Page):
         page.update()
 
     async def load_logs():
-        if page.session_id is None: 
+        if page.session is None: 
             return
 
         logs = await asyncio.to_thread(get_logs, 50)

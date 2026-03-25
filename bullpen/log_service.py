@@ -49,7 +49,7 @@ def log_event(
     finally:
         conn.close()
 
-def get_logs(limit=50):
+def get_logs(limit=100):
     conn = _conn()
     try:
         cur = conn.cursor()
@@ -57,7 +57,7 @@ def get_logs(limit=50):
         cur.execute("""
             SELECT timestamp, actor_id, actor_role, action, status, target_id
             FROM audit_logs
-            ORDER BY timestamp ASC
+            ORDER BY timestamp DESC
             LIMIT %s
         """, (limit,))
 

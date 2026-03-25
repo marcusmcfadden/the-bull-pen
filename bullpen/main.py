@@ -109,6 +109,7 @@ async def main(page: ft.Page):
                     status="SUCCESS",
                     location="auth"
                 )
+                page.pubsub.send_all("log_updated")
 
                 nonlocal auto_refresh_running
                 if not auto_refresh_running:
@@ -195,6 +196,7 @@ async def main(page: ft.Page):
                     status="FAILED",
                     location="auth"
                 )
+                page.pubsub.send_all("log_updated")
 
                 page.update()
 
@@ -355,6 +357,7 @@ async def main(page: ft.Page):
             status="SUCCESS",
             location="auth"
         )
+        page.pubsub.send_all("log_updated")
 
         current_user["id"] = None
         current_user["tier"] = None
@@ -445,6 +448,9 @@ async def main(page: ft.Page):
 
         if not current_user["id"]:
             return
+        
+        if msg == "log_updated":
+            page.run_task(load_logs)
 
         if msg in ["roster_updated", "attendance_updated"]:
             page.run_task(update_roster_ui)
@@ -574,6 +580,7 @@ async def main(page: ft.Page):
             status="SUCCESS",
             location="export_csv"
         )
+        page.pubsub.send_all("log_updated")
 
         try:
             csv_bytes = await attendance_save.generate_csv(attendance_registry)
@@ -594,6 +601,7 @@ async def main(page: ft.Page):
                 status="SUCCESS",
                 location="export_csv"
             )
+            page.pubsub.send_all("log_updated")
 
             page.snack_bar = ft.SnackBar(
                 ft.Text("CSV xported successfullyy"),
@@ -632,6 +640,7 @@ async def main(page: ft.Page):
                 location="export_csv",
                 metadata=json.dumps({"error": str(exc)})
             )
+            page.pubsub.send_all("log_updated")
 
         finally:
             if hasattr(page, 'update_async'):
@@ -722,6 +731,7 @@ async def main(page: ft.Page):
                 status="SUCCESS",
                 location="export_pdf"
             )
+            page.pubsub.send_all("log_updated")
 
             start_ts, end_ts = past_n_weeks_range(2)
 
@@ -765,6 +775,7 @@ async def main(page: ft.Page):
                 location="export_pdf",
                 metadata=json.dumps({"error": str(ex)})
             )
+            page.pubsub.send_all("log_updated")
 
         finally:
             if hasattr(page, 'update_async'):
@@ -819,6 +830,7 @@ async def main(page: ft.Page):
                 target_id=current_user["id"],
                 target_type="cadet"
             )
+            page.pubsub.send_all("log_updated")
 
             if not force:
                 profile_view.visible = True
@@ -924,6 +936,7 @@ async def main(page: ft.Page):
                     target_type="cadet_edit",
                     target_id=target["id"]
                 )
+                page.pubsub.send_all("log_updated")
                 return
             
         is_edit = cadet_data is not None
@@ -1089,6 +1102,7 @@ async def main(page: ft.Page):
                             target_type="cadet",
                             metadata=json.dumps({"old": old_tier, "new": new_tier})
                         )
+                        page.pubsub.send_all("log_updated")
 
                     # check missing leader
                     if old_tier == 2 and new_tier != 2:
@@ -1113,6 +1127,7 @@ async def main(page: ft.Page):
                         target_id=cadet_id_new,
                         target_type="cadet"
                     )
+                    page.pubsub.send_all("log_updated")
 
                     username = combined_name.lower().replace(" ", "")
                     password = "password123"
@@ -1247,6 +1262,7 @@ async def main(page: ft.Page):
                 target_type="cadet_delete",
                 target_id=target["id"]
             )
+            page.pubsub.send_all("log_updated")
             return
 
         def finalize_delete(e):
@@ -1262,6 +1278,7 @@ async def main(page: ft.Page):
                 target_type="cadet_delete",
                 target_id=cadet_id
             )
+            page.pubsub.send_all("log_updated")
 
             page.update()
 
@@ -1365,6 +1382,7 @@ async def main(page: ft.Page):
                         "note": "semester reset"
                     })
                 )
+                page.pubsub.send_all("log_updated")
 
                 dialog.open = False
 
@@ -1388,6 +1406,7 @@ async def main(page: ft.Page):
                         "error": str(ex)
                     })
                 )
+                page.pubsub.send_all("log_updated")
 
                 raise
 
@@ -1424,6 +1443,7 @@ async def main(page: ft.Page):
                 status="SUCCESS",
                 target_type="system"
             )
+            page.pubsub.send_all("log_updated")
 
             dialog.open = False
 
@@ -1528,6 +1548,7 @@ async def main(page: ft.Page):
                         "late": late_val
                     })
                 )
+                page.pubsub.send_all("log_updated")
 
                 status_dropdown.value = status_val
                 late_checkbox.value = bool(late_val)
@@ -1935,14 +1956,12 @@ async def main(page: ft.Page):
 
     async def auto_refresh():
         while True:
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
 
             if not current_user["id"]:
                 break
-
             if logs_view.visible:
                 await load_logs()
-
             elif task_org_view.visible:
                 pass
 
@@ -1973,6 +1992,9 @@ async def main(page: ft.Page):
         page.update()
 
     async def load_logs():
+        if page.session_id is None: 
+            return
+
         logs = await asyncio.to_thread(get_logs, 50)
 
         log_list.controls.clear()
@@ -2045,6 +2067,7 @@ async def main(page: ft.Page):
                 status="DENIED",
                 target_type="attendance_view"
             )
+            page.pubsub.send_all("log_updated")
 
             def close_dialog(e):
                 dialog.open = False

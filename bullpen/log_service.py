@@ -49,6 +49,15 @@ def log_event(
     finally:
         conn.close()
 
+def wipe_logs():
+    conn = _conn(write=True)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM audit_logs")
+        conn.commit()
+    finally:
+        conn.close()
+
 def get_logs(limit=100):
     conn = _conn()
     try:
@@ -78,3 +87,4 @@ def get_logs(limit=100):
 
     finally:
         conn.close()
+        

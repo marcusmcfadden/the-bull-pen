@@ -1410,6 +1410,43 @@ async def main(page: ft.Page):
         dialog.open = True
         page.update()
 
+    def confirm_log_wipe():
+
+        def do_wipe(e):
+            wipe_logs()
+
+            log_event(
+                actor_id=current_user["id"],
+                actor_role=current_user["tier"],
+                action="WIPE_LOGS",
+                status="SUCCESS",
+                target_type="system"
+            )
+
+            dialog.open = False
+
+            page.snack_bar = ft.SnackBar(
+                ft.Text("All logs wiped"),
+                bgcolor="red"
+            )
+            page.snack_bar.open = True
+
+            page.update()
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("⚠️ CONFIRM LOG WIPE"),
+            content=ft.Text("This will delete ALL activity logs permanently."),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: setattr(dialog, "open", False)),
+                ft.Button("WIPE LOGS", bgcolor="red", color="white", on_click=do_wipe)
+            ],
+        )
+
+        page.overlay.append(dialog)
+        dialog.open = True
+        page.update()
+
     async def build_task_org():
 
         if not current_user["id"]:
@@ -1871,10 +1908,22 @@ async def main(page: ft.Page):
     )
 
     log_list = ft.ListView(expand=True, spacing=5)
+    
+    wipe_logs_btn = ft.IconButton(
+        icon=ft.Icons.DELETE,
+        icon_color="red",
+        tooltip="Wipe Logs",
+        on_click=lambda e: confirm_log_wipe(),
+        visible=False
+    )
 
     logs_view = ft.Container(
         content=ft.Column([
-            ft.Text("ACTIVITY LOG", size=20, weight="bold"),
+                ft.Row([
+                ft.Text("ACTIVITY LOG", size=20, weight="bold"),
+                ft.Container(expand=True),
+                wipe_logs_btn
+            ]),
             log_list
         ]),
         expand=True,

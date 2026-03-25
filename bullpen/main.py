@@ -100,6 +100,8 @@ async def main(page: ft.Page):
             if user:
                 current_user.update(user)
 
+                wipe_logs_btn.visible = (current_user["tier"] <= 1)
+
                 log_event(
                     actor_id=user["id"],
                     actor_role=user["tier"],
@@ -2022,6 +2024,10 @@ async def main(page: ft.Page):
     )
 
     async def show_logs():
+
+        if current_user["tier"] > 1:
+            return
+
         roster_view.visible = False
         task_org_view.visible = False
         profile_view.visible = False

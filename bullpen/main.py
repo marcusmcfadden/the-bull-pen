@@ -317,18 +317,12 @@ async def main(page: ft.Page):
     page.add(splash)
 
     def build_stats_panel(present, absent, excused, late):
-        return ft.Container(
-            content=ft.Column([
+        return ft.Column([
                 ft.Text(f"Present: {present}"),
                 ft.Text(f"Absent: {absent}"),
                 ft.Text(f"Excused: {excused}"),
                 ft.Text(f"Late: {late}"),
-            ]),
-            padding=15,
-            width=220,
-            bgcolor=ft.Colors.WHITE10,
-            border_radius=10
-        )
+            ])
 
     async def load_ui():
         await asyncio.sleep(0.3)
